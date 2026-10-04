@@ -4,7 +4,6 @@ import 'dotenv/config';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
-const windowsPsql = 'C:/Program Files/PostgreSQL/18/bin/psql.exe';
 const psql = 'psql';
 
 const result = spawnSync(
