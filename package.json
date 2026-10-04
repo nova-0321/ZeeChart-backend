@@ -31,13 +31,26 @@
       "prettier --write"
     ],
     "*.{json,md,yml,yaml}": "prettier --write"
+    "db:setup": "node scripts/db-setup.mjs",
+    "typeorm": "typeorm",
+    "migration:create": "typeorm migration:create",
+    "migration:generate": "npm run build && typeorm migration:generate -d dist/database/database.data-source.js",
+    "migration:run": "npm run build && typeorm migration:run -d dist/database/database.data-source.js",
+    "migration:revert": "npm run build && typeorm migration:revert -d dist/database/database.data-source.js",
+    "migration:show": "npm run build && typeorm migration:show -d dist/database/database.data-source.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
+    "@nestjs/config": "^12.0.1",
     "@nestjs/core": "^12.0.1",
     "@nestjs/platform-express": "^12.0.1",
+    "@nestjs/typeorm": "^12.0.2",
+    "dotenv": "^18.0.5",
+    "joi": "^18.2.9",
+    "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "typeorm": "^1.1.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
