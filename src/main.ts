@@ -1,12 +1,13 @@
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
+import { createOpenApiDocument } from './openapi.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const config = app.get(ConfigService);
-
-  app.enableCors({ origin: config.get<string>('CORS_ORIGIN') });
-  await app.listen(config.get<number>('PORT', 3000));
+  // Swagger UI at /docs, raw spec at /docs-json
+  SwaggerModule.setup('docs', app, () => createOpenApiDocument(app));
+  await app.listen(process.env.PORT ?? 3000);
 }
 await bootstrap();
