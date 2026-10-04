@@ -4,16 +4,8 @@ import 'dotenv/config';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
-const required = ['DB_HOST', 'DB_USERNAME', 'DB_PASSWORD', 'DB_NAME'];
-const missing = required.filter((key) => !process.env[key]);
-if (missing.length) {
-  console.error(`Missing in .env: ${missing.join(', ')}. See .env.example.`);
-  process.exit(1);
-}
-
 const windowsPsql = 'C:/Program Files/PostgreSQL/18/bin/psql.exe';
-const psql =
-  process.env.PSQL ?? (existsSync(windowsPsql) ? windowsPsql : 'psql');
+const psql = 'psql';
 
 const result = spawnSync(
   psql,
