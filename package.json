@@ -19,7 +19,7 @@
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "openapi:generate": "nest build && node dist/openapi-generate.js",
-    "openapi:check": "npm run openapi:generate && git diff --exit-code -- openapi.json"
+    "openapi:check": "npm run openapi:generate && git diff --exit-code -- openapi.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -32,7 +32,7 @@
       "eslint --fix",
       "prettier --write"
     ],
-    "*.{json,md,yml,yaml}": "prettier --write"
+    "*.{json,md,yml,yaml}": "prettier --write",
     "db:setup": "node scripts/db-setup.mjs",
     "typeorm": "typeorm",
     "migration:create": "typeorm migration:create",
