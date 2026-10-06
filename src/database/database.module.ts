@@ -8,8 +8,14 @@ import { buildDataSourceOptions } from './database.config.js';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) =>
-        buildDataSourceOptions((key) => config.get<string>(key)),
+      useFactory: (config: ConfigService) => ({
+        ...buildDataSourceOptions((key) => config.get<string>(key)),
+        // The app registers entities through TypeOrmModule.forFeature (autoLoadEntities).
+        // The file glob in buildDataSourceOptions is only for the TypeORM CLI: it matches
+        // .ts sources under vitest, which Node's ESM loader can't parse.
+        entities: [],
+        autoLoadEntities: true,
+      }),
     }),
   ],
 })
