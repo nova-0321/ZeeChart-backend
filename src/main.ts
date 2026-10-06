@@ -2,9 +2,14 @@ import { NestFactory } from '@nestjs/core';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
 import { createOpenApiDocument } from './openapi.js';
+import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const config = app.get(ConfigService);
+  app.enableCors({ origin: config.get<string>('CORS_ORIGIN') });
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   // Swagger UI at /docs, raw spec at /docs-json
   SwaggerModule.setup('docs', app, () => createOpenApiDocument(app));
   await app.listen(process.env.PORT ?? 3000);

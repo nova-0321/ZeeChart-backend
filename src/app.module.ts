@@ -1,5 +1,6 @@
 import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { envValidationSchema } from './config/env.validation.js';
 import { APP_FILTER } from '@nestjs/core';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 import { AppController } from './app.controller.js';
@@ -10,7 +11,17 @@ import { ProjectsModule } from './projects/projects.module.js';
 import { DatabaseModule } from './database/database.module.js';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), DatabaseModule, HealthModule, ProjectsModule],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // Fail at startup, listing every missing/invalid variable, instead of a
+      // confusing connection error later.
+      validationSchema: envValidationSchema,
+    }),
+    DatabaseModule,
+    HealthModule,
+    ProjectsModule,
+  ],
   controllers: [AppController],
   providers: [
     AppService,
