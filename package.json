@@ -25,13 +25,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "prepare": "husky"
-  },
-  "lint-staged": {
-    "*.{ts,mts,js,mjs}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
+    "prepare": "husky",
     "*.{json,md,yml,yaml}": "prettier --write",
     "db:setup": "node scripts/db-setup.mjs",
     "typeorm": "typeorm",
@@ -41,6 +35,12 @@
     "migration:revert": "npm run build && typeorm migration:revert -d dist/database/database.data-source.js",
     "migration:show": "npm run build && typeorm migration:show -d dist/database/database.data-source.js"
   },
+  "lint-staged": {
+    "*.{ts,mts,js,mjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
     "@nestjs/config": "^12.0.1",
@@ -48,6 +48,8 @@
     "@nestjs/platform-express": "^12.0.1",
     "@nestjs/swagger": "^12.0.2",
     "@nestjs/typeorm": "^12.0.2",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
     "dotenv": "^18.0.5",
     "joi": "^18.2.9",
     "pg": "^8.23.1",

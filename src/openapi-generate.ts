@@ -1,8 +1,18 @@
 // Writes openapi.json without starting the HTTP server or connecting to external services.
 import { writeFileSync } from 'node:fs';
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module.js';
 import { createOpenApiDocument } from './openapi.js';
+
+// The app validates its env vars when AppModule is imported, but this script never
+// connects to a database (preview mode). Placeholders keep it runnable in CI and on
+// a fresh clone with no .env; real values, when present, win.
+process.env.DB_HOST ??= 'localhost';
+process.env.DB_USERNAME ??= 'openapi';
+process.env.DB_PASSWORD ??= 'openapi';
+process.env.DB_NAME ??= 'openapi';
+
+// Imported after the defaults above: a static import would validate the env first.
+const { AppModule } = await import('./app.module.js');
 
 const app = await NestFactory.create(AppModule, { preview: true, logger: false });
 const document = createOpenApiDocument(app);
