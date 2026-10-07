@@ -79,3 +79,51 @@ jobs:
 
       - name: E2E tests
         run: npm run test:e2e
+
+  # Fails a pull request that changes an entity without adding a migration. It applies every
+  # committed migration to an empty database, then asks TypeORM whether the entities still
+  # differ from the result. (Keep the service and env in step with the e2e job above.)
+  migrations:
+    name: Migrations up to date
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: zeechart
+          POSTGRES_PASSWORD: zeechart
+          POSTGRES_DB: zeechart_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U zeechart"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_USERNAME: zeechart
+      DB_PASSWORD: zeechart
+      DB_NAME: zeechart_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Apply all migrations to an empty database
+        run: npm run migration:run
+
+      - name: Entities must match the migrated schema
+        run: |
+          npm run migration:check || {
+            echo "::error title=Missing migration::An entity changed without a migration. Run: npm run migration:generate -- src/database/migrations/<Name>, read the SQL, and commit the file."
+            exit 1
+          }

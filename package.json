@@ -33,7 +33,8 @@
     "migration:generate": "npm run build && typeorm migration:generate -d dist/database/database.data-source.js",
     "migration:run": "npm run build && typeorm migration:run -d dist/database/database.data-source.js",
     "migration:revert": "npm run build && typeorm migration:revert -d dist/database/database.data-source.js",
-    "migration:show": "npm run build && typeorm migration:show -d dist/database/database.data-source.js"
+    "migration:show": "npm run build && typeorm migration:show -d dist/database/database.data-source.js",
+    "migration:check": "npm run build && typeorm migration:generate src/database/migrations/check -d dist/database/database.data-source.js --check"
   },
   "lint-staged": {
     "*.{ts,mts,js,mjs}": [

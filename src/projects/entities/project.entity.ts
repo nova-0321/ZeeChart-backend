@@ -2,10 +2,12 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  OneToMany,
   PrimaryGeneratedColumn,
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
+import { Task } from '../../tasks/entities/task.entity.js';
 
 @Entity('projects')
 @Unique(['name'])
@@ -21,6 +23,9 @@ export class Project {
 
   @Column({ type: 'boolean', default: false })
   archived: boolean;
+
+  @OneToMany(() => Task, (task) => task.project)
+  tasks: Task[];
 
   @CreateDateColumn()
   createdAt: Date;
