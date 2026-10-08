@@ -43,6 +43,131 @@
         ]
       }
     },
+    "/events": {
+      "get": {
+        "operationId": "Events_findByProject",
+        "parameters": [
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectEvent"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "The events of a project, earliest first.",
+        "tags": [
+          "Events"
+        ]
+      },
+      "post": {
+        "operationId": "Events_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEventDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectEvent"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Events"
+        ]
+      }
+    },
+    "/events/{id}": {
+      "patch": {
+        "operationId": "Events_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEventDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectEvent"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Change any of name, color and dates.",
+        "tags": [
+          "Events"
+        ]
+      },
+      "delete": {
+        "operationId": "Events_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Events"
+        ]
+      }
+    },
     "/projects": {
       "post": {
         "operationId": "Projects_create",
@@ -614,59 +739,6 @@
           "timestamp"
         ]
       },
-      "CreateProjectDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ]
-      },
-      "Project": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "archived": {
-            "type": "boolean"
-          },
-          "tasks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Task"
-            }
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "archived",
-          "tasks",
-          "createdAt",
-          "updatedAt"
-        ]
-      },
       "Task": {
         "type": "object",
         "properties": {
@@ -753,6 +825,161 @@
           "parent",
           "project",
           "children"
+        ]
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            }
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "archived",
+          "tasks",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ProjectEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "First day of the event."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Last day of the event (included)."
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "project": {
+            "$ref": "#/components/schemas/Project"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "color",
+          "startDate",
+          "endDate",
+          "projectId",
+          "createdAt",
+          "updatedAt",
+          "project"
+        ]
+      },
+      "CreateEventDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "color": {
+            "type": "string",
+            "description": "A hex color such as \"#e5484d\".",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "\"YYYY-MM-DD\": the first day."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "\"YYYY-MM-DD\": the last day. Must not be before startDate."
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "name",
+          "color",
+          "startDate",
+          "endDate",
+          "projectId"
+        ]
+      },
+      "UpdateEventDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "color": {
+            "type": "string",
+            "description": "A hex color such as \"#e5484d\".",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "\"YYYY-MM-DD\": the first day."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "\"YYYY-MM-DD\": the last day. Must not be before startDate."
+          }
+        }
+      },
+      "CreateProjectDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
         ]
       },
       "UpdateProjectDto": {
