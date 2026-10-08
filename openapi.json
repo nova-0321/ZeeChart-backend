@@ -451,6 +451,132 @@
           "Task"
         ]
       }
+    },
+    "/dependencies": {
+      "get": {
+        "operationId": "Dependency_findByProject",
+        "parameters": [
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskDependency"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Every link between the tasks of a project.",
+        "tags": [
+          "Dependency"
+        ]
+      },
+      "post": {
+        "operationId": "Dependency_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DependencyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDependency"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Make `toTaskId` come after `fromTaskId`. Rejects self links, duplicates and cycles; moves the successor later if it is too early.",
+        "tags": [
+          "Dependency"
+        ]
+      }
+    },
+    "/dependencies/{id}": {
+      "patch": {
+        "operationId": "Dependency_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDependencyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDependency"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Change the type and/or the lag of a link.",
+        "tags": [
+          "Dependency"
+        ]
+      },
+      "delete": {
+        "operationId": "Dependency_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dependency"
+        ]
+      }
     }
   },
   "info": {
@@ -787,6 +913,107 @@
         "required": [
           "type"
         ]
+      },
+      "TaskDependency": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "fromTaskId": {
+            "type": "string",
+            "description": "The predecessor."
+          },
+          "toTaskId": {
+            "type": "string",
+            "description": "The successor."
+          },
+          "type": {
+            "type": "string"
+          },
+          "lagDays": {
+            "type": "number",
+            "description": "Days the successor waits after the predecessor; negative lets them overlap."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "fromTask": {
+            "$ref": "#/components/schemas/Task"
+          },
+          "toTask": {
+            "$ref": "#/components/schemas/Task"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "fromTaskId",
+          "toTaskId",
+          "type",
+          "lagDays",
+          "createdAt",
+          "fromTask",
+          "toTask"
+        ]
+      },
+      "DependencyDto": {
+        "type": "object",
+        "properties": {
+          "lagDays": {
+            "type": "number",
+            "minimum": -365,
+            "maximum": 365
+          },
+          "fromTaskId": {
+            "type": "string",
+            "description": "The predecessor task.",
+            "format": "uuid"
+          },
+          "toTaskId": {
+            "type": "string",
+            "description": "The successor task: it comes after the predecessor.",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "description": "Defaults to \"FS\" (finish to start).",
+            "enum": [
+              "FS",
+              "SS",
+              "FF",
+              "SF"
+            ]
+          }
+        },
+        "required": [
+          "fromTaskId",
+          "toTaskId"
+        ]
+      },
+      "UpdateDependencyDto": {
+        "type": "object",
+        "properties": {
+          "lagDays": {
+            "type": "number",
+            "minimum": -365,
+            "maximum": 365
+          },
+          "type": {
+            "description": "Defaults to \"FS\" (finish to start).",
+            "enum": [
+              "FS",
+              "SS",
+              "FF",
+              "SF"
+            ],
+            "type": "string"
+          }
+        }
       }
     }
   }
