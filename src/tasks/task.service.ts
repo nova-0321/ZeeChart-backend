@@ -5,12 +5,14 @@ import { Project } from '../projects/entities/project.entity.js';
 import { TaskDto } from './dto/task.dto.js';
 import type { UpdateTaskDto } from './dto/update-task.dto.js';
 import { Task } from './entities/task.entity.js';
+import { TaskScheduler } from './task-scheduler.service.js';
 
 @Injectable()
 export class TaskService {
   constructor(
     @InjectRepository(Task)
     private readonly taskRepo: Repository<Task>,
+    private readonly scheduler: TaskScheduler,
   ) {}
 
   /** Flat list for a project, ordered; the frontend builds the tree from parentId. */
@@ -87,14 +89,24 @@ export class TaskService {
     return this.taskRepo.save(task);
   }
 
-  /** Apply the fields that were sent. The dates are checked together, so moving only one end can't invert the range. */
+  /**
+   * Apply the fields that were sent. The dates are checked together, so moving only one end can't
+   * invert the range. New dates also move what the dependencies tie to this task (see schedule.ts).
+   */
   async update(id: string, dto: UpdateTaskDto) {
     const task = await this.taskRepo.findOneByOrFail({ id });
+    const before = {
+      start: String(task.startDate).slice(0, 10),
+      end: String(task.endDate).slice(0, 10),
+    };
     Object.assign(task, dto);
     if (new Date(task.endDate) < new Date(task.startDate)) {
       throw new BadRequestException('The end date must not be before the start date');
     }
-    return this.taskRepo.save(task);
+    const moved =
+      String(task.startDate).slice(0, 10) !== before.start ||
+      String(task.endDate).slice(0, 10) !== before.end;
+    return moved ? this.scheduler.applyDateEdit(task) : this.taskRepo.save(task);
   }
 
   /** `taskId` is null while creating: a new task has no descendants to cycle with. */

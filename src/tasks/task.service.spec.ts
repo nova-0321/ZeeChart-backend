@@ -36,7 +36,7 @@ describe('TaskService.create', () => {
     repo.create.mockImplementation((values: object) => values);
     repo.save.mockImplementation((task: object) => Promise.resolve({ id: 't1', ...task }));
     repo.manager.exists.mockResolvedValue(true);
-    service = new TaskService(repo as never);
+    service = new TaskService(repo as never, {} as never);
   });
 
   it('gives a task from the form progress 0 and the first order, so the insert has every required column', async () => {
@@ -91,6 +91,7 @@ describe('TaskService.create', () => {
 
 describe('TaskService.update', () => {
   const repo = { findOneByOrFail: vi.fn(), save: vi.fn() };
+  const scheduler = { applyDateEdit: vi.fn() };
   const stored = () => ({
     id: 't1',
     name: 'Old',
@@ -105,7 +106,8 @@ describe('TaskService.update', () => {
     vi.resetAllMocks();
     repo.save.mockImplementation((task: object) => Promise.resolve(task));
     repo.findOneByOrFail.mockResolvedValue(stored());
-    service = new TaskService(repo as never);
+    scheduler.applyDateEdit.mockImplementation((task: object) => Promise.resolve(task));
+    service = new TaskService(repo as never, scheduler as never);
   });
 
   it('changes only the fields that were sent', async () => {
@@ -123,11 +125,20 @@ describe('TaskService.update', () => {
     expect(repo.save).not.toHaveBeenCalled();
   });
 
-  it('lets both dates move together to a later range', async () => {
+  it('hands new dates to the scheduler, which also moves the tasks that follow', async () => {
     await service.update('t1', {
       startDate: '2026-11-01' as never,
       endDate: '2026-11-03' as never,
     });
+    expect(scheduler.applyDateEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't1', startDate: '2026-11-01', endDate: '2026-11-03' }),
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('saves directly, without scheduling, when the dates did not change', async () => {
+    await service.update('t1', { name: 'New', startDate: '2026-10-07' as never });
+    expect(scheduler.applyDateEdit).not.toHaveBeenCalled();
     expect(repo.save).toHaveBeenCalled();
   });
 
