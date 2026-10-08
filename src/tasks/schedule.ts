@@ -127,6 +127,54 @@ class Network {
     return this.incoming.get(id) ?? [];
   }
 
+  parentOf(id: string): string | null {
+    return this.tasks.get(id)?.parentId ?? null;
+  }
+
+  /** The groups above a task, nearest first. */
+  ancestorsOf(id: string): string[] {
+    const found: string[] = [];
+    for (
+      let up = this.tasks.get(id)?.parentId;
+      up && !found.includes(up);
+      up = this.tasks.get(up)?.parentId
+    ) {
+      found.push(up);
+    }
+    return found;
+  }
+
+  /**
+   * A group that was stretched to cover a task keeps every link into it: its start (or end) may
+   * not pass what a predecessor allows. The tasks of the group are not moved to make room, so a
+   * move that would break it is refused.
+   */
+  assertGroupsHold(id: string) {
+    for (const group of this.ancestorsOf(id)) {
+      const was = this.original.get(group);
+      const now = this.span(group);
+      if (!was || (was.s === now.s && was.e === now.e)) continue;
+      for (const link of this.incomingOf(group)) {
+        const from = this.span(link.fromTaskId);
+        if (shortfall(link, from, now) > 0) {
+          throw new ScheduleError(
+            `Can't use these dates: the group "${this.name(group)}" would have to ${constrainsEnd(link) ? 'end' : 'start'} before the link from "${this.name(link.fromTaskId)}" (${LABELS[link.type] ?? link.type}) allows: on or after ${fromDay(bound(link, from))}.`,
+          );
+        }
+      }
+    }
+  }
+
+  /** The days the tasks directly under a group cover; null when it has none. */
+  childrenSpan(id: string): Span | null {
+    const spans = (this.children.get(id) ?? []).map((child) => this.span(child));
+    if (spans.length === 0) return null;
+    return {
+      s: Math.min(...spans.map((span) => span.s)),
+      e: Math.max(...spans.map((span) => span.e)),
+    };
+  }
+
   /** The task and everything below it. */
   block(id: string): string[] {
     const ids = [id];
@@ -155,19 +203,24 @@ class Network {
     this.queue.push(id);
   }
 
-  /** A group has to cover its tasks: stretch the groups above a task that left their range. */
-  stretchAncestors(id: string) {
-    let child = this.tasks.get(id);
-    while (child?.parentId) {
-      const parent = this.span(child.parentId);
-      const span = this.span(child.id);
-      if (span.s < parent.s || span.e > parent.e) {
-        parent.s = Math.min(parent.s, span.s);
-        parent.e = Math.max(parent.e, span.e);
-        this.queue.push(child.parentId);
-      }
-      child = this.tasks.get(child.parentId);
-    }
+  /**
+   * A group is the days of its tasks, no more and no less: fit the groups above a task to what is
+   * inside them now. They grow when a task goes past their range and shrink when the task that
+   * made them wide moves back (the chart draws a group that way, and so must what is stored).
+   */
+  fitAncestors(id: string) {
+    for (const group of this.ancestorsOf(id)) this.fitGroup(group);
+  }
+
+  /** Fit one group to its tasks (a group without tasks keeps its dates). */
+  fitGroup(id: string) {
+    const inside = this.childrenSpan(id);
+    if (!inside) return;
+    const span = this.span(id);
+    if (span.s === inside.s && span.e === inside.e) return;
+    span.s = inside.s;
+    span.e = inside.e;
+    this.queue.push(id);
   }
 
   /** Push every successor of the queued tasks later until all links hold. */
@@ -184,7 +237,7 @@ class Network {
         if (days > 0) {
           const moved = this.block(link.toTaskId);
           this.shift(moved, days);
-          this.stretchAncestors(link.toTaskId);
+          this.fitAncestors(link.toTaskId);
         }
       }
     }
@@ -213,6 +266,55 @@ export function planReschedule(
 ): Map<string, DatedChange> {
   const network = new Network(tasks, links);
   seeds.forEach((id) => network.enqueue(id));
+  network.settle();
+  return network.changes();
+}
+
+/**
+ * What changes when a task was put under a group (or created in one). `tasks` already has the task
+ * under its new parent. The groups above stretch to cover it, and what follows them is pushed. A
+ * link between the task (or something below it) and a group above it is refused: the group has to
+ * cover the task, and the link says one waits for the other, so they would push each other forever.
+ */
+export function planAttach(
+  tasks: ScheduleTask[],
+  links: ScheduleLink[],
+  id: string,
+  oldParentId: string | null = null,
+): Map<string, DatedChange> {
+  const network = new Network(tasks, links);
+  const above = new Set(network.ancestorsOf(id));
+  const inside = new Set(network.block(id));
+  for (const link of links) {
+    if (
+      (inside.has(link.fromTaskId) && above.has(link.toTaskId)) ||
+      (inside.has(link.toTaskId) && above.has(link.fromTaskId))
+    ) {
+      throw new ScheduleError(
+        `Can't put this task there: it is linked to "${network.name(inside.has(link.fromTaskId) ? link.toTaskId : link.fromTaskId)}", the group it would go in (or a group above it). Remove the link first.`,
+      );
+    }
+  }
+  network.fitAncestors(id);
+  network.assertGroupsHold(id);
+  // The group the task left shrinks to the tasks that are still in it.
+  if (oldParentId && oldParentId !== network.parentOf(id)) {
+    network.fitGroup(oldParentId);
+    network.fitAncestors(oldParentId);
+  }
+  network.settle();
+  return network.changes();
+}
+
+/** What changes when a task left a group (it was removed or made top-level): the group refits. */
+export function planRefit(
+  tasks: ScheduleTask[],
+  links: ScheduleLink[],
+  groupId: string,
+): Map<string, DatedChange> {
+  const network = new Network(tasks, links);
+  network.fitGroup(groupId);
+  network.fitAncestors(groupId);
   network.settle();
   return network.changes();
 }
@@ -258,8 +360,18 @@ export function planEdit(
       }
     }
     if (needed > 0) network.shift(members, needed);
-    network.stretchAncestors(id);
+    network.fitAncestors(id);
+    network.assertGroupsHold(id);
   } else {
+    if (network.type(id) === 'group') {
+      // A group's range is the days of its tasks: it can grow with them, but not leave one out.
+      const inside = network.childrenSpan(id);
+      if (inside && (start > inside.s || end < inside.e)) {
+        throw new ScheduleError(
+          `Can't use these dates: the group must cover its tasks (${fromDay(inside.s)} to ${fromDay(inside.e)}).`,
+        );
+      }
+    }
     network.setSpan(id, start, end);
     if (network.type(id) !== 'group') {
       for (const link of network.incomingOf(id)) {
@@ -275,7 +387,8 @@ export function planEdit(
         }
       }
     }
-    network.stretchAncestors(id);
+    network.fitAncestors(id);
+    network.assertGroupsHold(id);
   }
   network.settle();
   // The edited task is always in the result, even when it ended up where it started: the

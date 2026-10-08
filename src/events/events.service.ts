@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { rejectNulls } from '../common/reject-nulls.js';
 import { Project } from '../projects/entities/project.entity.js';
 import type { CreateEventDto } from './dto/create-event.dto.js';
 import type { UpdateEventDto } from './dto/update-event.dto.js';
@@ -37,6 +38,7 @@ export class EventsService {
 
   /** The dates are checked together, so moving only one end can't invert the range. */
   async update(id: string, dto: UpdateEventDto) {
+    rejectNulls(dto, ['description']);
     const event = await this.eventRepo.findOneByOrFail({ id });
     Object.assign(event, dto);
     event.startDate = day(event.startDate);

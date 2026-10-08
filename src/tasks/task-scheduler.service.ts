@@ -2,7 +2,9 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import {
+  planAttach,
   planEdit,
+  planRefit,
   planReschedule,
   ScheduleError,
   type DatedChange,
@@ -42,6 +44,41 @@ export class TaskScheduler {
       const saved = await manager.save(Task, task);
       await this.saveChanges(manager, changes, task.id);
       return saved;
+    });
+  }
+
+  /**
+   * Save a task that was created in a group or moved into one (`task` already has its parent):
+   * the groups above stretch to cover it and what follows them is pushed, all or nothing. Refused
+   * when a link ties it to a group above it. Returns the saved task.
+   */
+  async saveAttached(task: Task, oldParentId: string | null = null): Promise<Task> {
+    return this.taskRepo.manager.transaction(async (manager) => {
+      const saved = await manager.save(Task, task);
+      const { tasks, links } = await this.load(saved.projectId, manager);
+      try {
+        await this.saveChanges(manager, planAttach(tasks, links, saved.id, oldParentId));
+      } catch (error) {
+        if (error instanceof ScheduleError) throw new BadRequestException(error.message);
+        throw error;
+      }
+      return saved;
+    });
+  }
+
+  /**
+   * After a task left a group (it was deleted, or made top-level), fit the group, and the groups
+   * above it, to the tasks that are still in them.
+   */
+  async refitGroup(projectId: string, groupId: string): Promise<void> {
+    await this.taskRepo.manager.transaction(async (manager) => {
+      const { tasks, links } = await this.load(projectId, manager);
+      try {
+        await this.saveChanges(manager, planRefit(tasks, links, groupId));
+      } catch (error) {
+        if (error instanceof ScheduleError) throw new BadRequestException(error.message);
+        throw error;
+      }
     });
   }
 

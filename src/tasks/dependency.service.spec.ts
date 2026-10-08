@@ -18,6 +18,7 @@ describe('DependencyService.create', () => {
     create: vi.fn(),
     save: vi.fn(),
     existsBy: vi.fn(),
+    delete: vi.fn(),
     createQueryBuilder: vi.fn(),
   };
   const taskRepo = { findOneByOrFail: vi.fn(), findOneBy: vi.fn() };
@@ -93,6 +94,12 @@ describe('DependencyService.create', () => {
     await service.create({ fromTaskId: A, toTaskId: B, lagDays: 2 });
     expect(dependencyRepo.save).toHaveBeenCalledWith(expect.objectContaining({ lagDays: 2 }));
     expect(scheduler.rescheduleFrom).toHaveBeenCalledWith(PROJECT, A);
+  });
+
+  it('takes the link back out when it could not be applied, so no link stays after an error', async () => {
+    scheduler.rescheduleFrom.mockRejectedValue(new BadRequestException('no'));
+    await expect(service.create({ fromTaskId: A, toTaskId: B })).rejects.toThrow('no');
+    expect(dependencyRepo.delete).toHaveBeenCalledWith('d1');
   });
 
   it('rejects a link that already exists', async () => {

@@ -1,6 +1,8 @@
 import {
   isBroken,
+  planAttach,
   planEdit,
+  planRefit,
   planReschedule,
   ScheduleError,
   type ScheduleLink,
@@ -104,6 +106,7 @@ describe('planReschedule', () => {
     const tasks = [
       task('a', '2026-10-05', '2026-10-07'),
       task('g', '2026-10-01', '2026-10-10', { type: 'group' }),
+      task('k', '2026-10-01', '2026-10-03', { parentId: 'g' }),
       task('c', '2026-10-08', '2026-10-10', { parentId: 'g' }),
     ];
     const changes = planReschedule(tasks, [link('a', 'c', 'FS', 5)], ['a']);
@@ -191,6 +194,24 @@ describe('planEdit', () => {
     expect(dates(stretched, 'g')).toBe('2026-10-05..2026-10-16');
   });
 
+  it('refuses a group range that leaves one of its tasks out, but lets it grow or fit', () => {
+    const grouped = [
+      task('g', '2026-10-05', '2026-10-12', { type: 'group' }),
+      task('c1', '2026-10-05', '2026-10-07', { parentId: 'g' }),
+      task('c2', '2026-10-10', '2026-10-12', { parentId: 'g' }),
+    ];
+    expect(() => planEdit(grouped, [], 'g', '2026-10-05', '2026-10-11')).toThrow(
+      /group must cover its tasks \(2026-10-05 to 2026-10-12\)/,
+    );
+    expect(() => planEdit(grouped, [], 'g', '2026-10-06', '2026-10-12')).toThrow(/must cover/);
+    expect(dates(planEdit(grouped, [], 'g', '2026-10-04', '2026-10-14'), 'g')).toBe(
+      '2026-10-04..2026-10-14',
+    );
+    expect(dates(planEdit(grouped, [], 'g', '2026-10-05', '2026-10-12'), 'g')).toBe(
+      '2026-10-05..2026-10-12',
+    );
+  });
+
   it('moving a group clamps by the links into any of its tasks', () => {
     const grouped = [
       task('p', '2026-10-01', '2026-10-10'),
@@ -200,5 +221,163 @@ describe('planEdit', () => {
     const changes = planEdit(grouped, [link('p', 'c')], 'g', '2026-10-05', '2026-10-08');
     expect(dates(changes, 'g')).toBe('2026-10-11..2026-10-14');
     expect(dates(changes, 'c')).toBe('2026-10-11..2026-10-14');
+  });
+});
+
+describe('planAttach', () => {
+  const group = task('g', '2026-01-01', '2026-01-10', { type: 'group' });
+
+  // A group is exactly the days of its tasks, so these have a task that fills them.
+  const filler = task('k', '2026-01-01', '2026-01-10', { parentId: 'g' });
+
+  it('stretches the group so it covers the task put in it', () => {
+    const tasks = [group, filler, task('t', '2026-03-01', '2026-03-05', { parentId: 'g' })];
+    expect(dates(planAttach(tasks, [], 't'), 'g')).toBe('2026-01-01..2026-03-05');
+  });
+
+  it('shrinks the group the task left, and the group above it', () => {
+    // t was in g and is now top-level: g is only what k covers, and so is the group around g.
+    const tasks = [
+      task('top', '2026-01-01', '2026-03-05', { type: 'group' }),
+      task('g', '2026-01-01', '2026-03-05', { type: 'group', parentId: 'top' }),
+      task('k', '2026-01-01', '2026-01-10', { parentId: 'g' }),
+      task('t', '2026-03-01', '2026-03-05'),
+    ];
+    const changes = planAttach(tasks, [], 't', 'g');
+    expect(dates(changes, 'g')).toBe('2026-01-01..2026-01-10');
+    expect(dates(changes, 'top')).toBe('2026-01-01..2026-01-10');
+  });
+
+  it('fits a group to what is left after a task was removed', () => {
+    const tasks = [
+      task('g', '2026-01-01', '2026-03-05', { type: 'group' }),
+      task('k', '2026-01-01', '2026-01-10', { parentId: 'g' }),
+    ];
+    expect(dates(planRefit(tasks, [], 'g'), 'g')).toBe('2026-01-01..2026-01-10');
+    const empty = [task('e', '2026-01-01', '2026-03-05', { type: 'group' })];
+    expect(planRefit(empty, [], 'e').size).toBe(0);
+  });
+
+  it('stretches every group above, and pushes what follows a stretched group', () => {
+    const tasks = [
+      task('outer', '2026-01-01', '2026-01-10', { type: 'group' }),
+      task('inner', '2026-01-01', '2026-01-10', { type: 'group', parentId: 'outer' }),
+      task('k', '2026-01-01', '2026-01-10', { parentId: 'inner' }),
+      task('t', '2025-12-20', '2025-12-22', { parentId: 'inner' }),
+      task('after', '2026-01-11', '2026-01-12'),
+    ];
+    const changes = planAttach(tasks, [link('outer', 'after')], 't');
+    expect(dates(changes, 'inner')).toBe('2025-12-20..2026-01-10');
+    expect(dates(changes, 'outer')).toBe('2025-12-20..2026-01-10');
+    expect(changes.has('after')).toBe(false);
+    const later = [
+      group,
+      filler,
+      task('t', '2026-01-05', '2026-01-20', { parentId: 'g' }),
+      task('after', '2026-01-11', '2026-01-12'),
+    ];
+    expect(dates(planAttach(later, [link('g', 'after')], 't'), 'after')).toBe(
+      '2026-01-21..2026-01-22',
+    );
+  });
+
+  it('changes nothing when the task already fits', () => {
+    const tasks = [group, filler, task('t', '2026-01-02', '2026-01-03', { parentId: 'g' })];
+    expect(planAttach(tasks, [], 't').size).toBe(0);
+  });
+
+  it('refuses a task that is linked to the group it goes in, or to one above it', () => {
+    const tasks = [group, task('t', '2026-03-01', '2026-03-05', { parentId: 'g' })];
+    expect(() => planAttach(tasks, [link('g', 't')], 't')).toThrow(/linked to "g"/);
+    expect(() => planAttach(tasks, [link('t', 'g')], 't')).toThrow(ScheduleError);
+    const nested = [
+      task('outer', '2026-01-01', '2026-01-10', { type: 'group' }),
+      task('inner', '2026-01-01', '2026-01-10', { type: 'group', parentId: 'outer' }),
+      task('t', '2026-01-02', '2026-01-03', { parentId: 'inner' }),
+    ];
+    expect(() => planAttach(nested, [link('outer', 't')], 't')).toThrow(/Remove the link first/);
+  });
+
+  it('refuses it for what is below the task too', () => {
+    const tasks = [
+      group,
+      task('sub', '2026-01-02', '2026-01-08', { type: 'group', parentId: 'g' }),
+      task('leaf', '2026-01-03', '2026-01-04', { parentId: 'sub' }),
+    ];
+    expect(() => planAttach(tasks, [link('g', 'leaf')], 'sub')).toThrow(ScheduleError);
+  });
+});
+
+describe('a group is the days of its tasks', () => {
+  const tasks = [
+    task('g', '2026-12-13', '2027-01-13', { type: 'group' }),
+    task('q', '2026-12-13', '2027-01-13', { parentId: 'g' }),
+    task('w', '2026-12-13', '2027-01-13', { parentId: 'g' }),
+  ];
+
+  it('grows when a task is moved out and shrinks when it is moved back', () => {
+    const out = planEdit(tasks, [], 'w', '2026-12-30', '2027-01-30');
+    expect(dates(out, 'g')).toBe('2026-12-13..2027-01-30');
+    // w is out at the 30th and q stayed: the group runs from q's start to w's end.
+    const moved = tasks.map((t) => {
+      if (t.id === 'w') return { ...t, startDate: '2026-12-30', endDate: '2027-01-30' };
+      if (t.id === 'g') return { ...t, endDate: '2027-01-30' };
+      return t;
+    });
+    const back = planEdit(moved, [], 'w', '2026-12-13', '2027-01-13');
+    expect(dates(back, 'g')).toBe('2026-12-13..2027-01-13');
+  });
+
+  it('shrinks when the task that was widest moves inward', () => {
+    const wide = [
+      task('g', '2026-12-01', '2027-01-13', { type: 'group' }),
+      task('q', '2026-12-13', '2027-01-13', { parentId: 'g' }),
+      task('w', '2026-12-01', '2027-01-13', { parentId: 'g' }),
+    ];
+    expect(dates(planEdit(wide, [], 'w', '2026-12-13', '2027-01-13'), 'g')).toBe(
+      '2026-12-13..2027-01-13',
+    );
+  });
+
+  it('pushing a linked task along (FF) fits the group to both', () => {
+    const changes = planEdit(tasks, [link('w', 'q', 'FF')], 'w', '2026-12-30', '2027-01-30');
+    expect(dates(changes, 'q')).toBe('2026-12-30..2027-01-30');
+    expect(dates(changes, 'g')).toBe('2026-12-30..2027-01-30');
+  });
+});
+
+describe('a group that stretches keeps its own incoming links', () => {
+  // A ends 2026-10-10, so the group (linked after A, finish to start) may not start before the 11th.
+  const tasks = [
+    task('a', '2026-10-01', '2026-10-10'),
+    task('g', '2026-10-11', '2026-10-20', { type: 'group' }),
+    task('c', '2026-10-11', '2026-10-15', { parentId: 'g' }),
+  ];
+  const links = [link('a', 'g')];
+
+  it('refuses to pull a task of the group out to before that day', () => {
+    expect(() => planEdit(tasks, links, 'c', '2026-10-05', '2026-10-09')).toThrow(
+      /group "g" would have to start before the link from "a"/,
+    );
+    expect(() => planEdit(tasks, links, 'c', '2026-10-06', '2026-10-10')).toThrow(ScheduleError);
+  });
+
+  it('allows what stays inside the group, growing it at the end, and shrinking it', () => {
+    // The group is only what its one task covers now.
+    expect(dates(planEdit(tasks, links, 'c', '2026-10-12', '2026-10-16'), 'g')).toBe(
+      '2026-10-12..2026-10-16',
+    );
+    expect(dates(planEdit(tasks, links, 'c', '2026-10-18', '2026-10-25'), 'g')).toBe(
+      '2026-10-18..2026-10-25',
+    );
+  });
+
+  it('applies to a task put into the group too', () => {
+    const outside = [
+      task('a', '2026-10-01', '2026-10-10'),
+      task('g', '2026-10-11', '2026-10-20', { type: 'group' }),
+      task('t', '2026-10-02', '2026-10-04', { parentId: 'g' }),
+    ];
+    expect(() => planAttach(outside, [link('a', 'g')], 't')).toThrow(/would have to start before/);
   });
 });

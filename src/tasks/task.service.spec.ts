@@ -25,6 +25,7 @@ describe('TaskService.create', () => {
     findOneByOrFail: vi.fn(),
     manager: { exists: vi.fn() },
   };
+  const scheduler = { saveAttached: vi.fn() };
   let service: TaskService;
 
   beforeEach(() => {
@@ -36,7 +37,10 @@ describe('TaskService.create', () => {
     repo.create.mockImplementation((values: object) => values);
     repo.save.mockImplementation((task: object) => Promise.resolve({ id: 't1', ...task }));
     repo.manager.exists.mockResolvedValue(true);
-    service = new TaskService(repo as never, {} as never);
+    scheduler.saveAttached.mockImplementation((task: object) =>
+      Promise.resolve({ id: 't1', ...task }),
+    );
+    service = new TaskService(repo as never, scheduler as never);
   });
 
   it('gives a task from the form progress 0 and the first order, so the insert has every required column', async () => {
@@ -85,7 +89,65 @@ describe('TaskService.create', () => {
   it('accepts a parent group of the same project', async () => {
     repo.findOneByOrFail.mockResolvedValue({ id: GROUP_ID, type: 'group', projectId: PROJECT_ID });
     await service.create(formBody({ parentId: GROUP_ID }));
-    expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ parentId: GROUP_ID }));
+    expect(scheduler.saveAttached).toHaveBeenCalledWith(
+      expect.objectContaining({ parentId: GROUP_ID }),
+    );
+  });
+
+  it('saves a top-level task directly, and one in a group through the scheduler so the group stretches', async () => {
+    await service.create(formBody());
+    expect(repo.save).toHaveBeenCalledTimes(1);
+    expect(scheduler.saveAttached).not.toHaveBeenCalled();
+    repo.findOneByOrFail.mockResolvedValue({ id: GROUP_ID, type: 'group', projectId: PROJECT_ID });
+    await service.create(formBody({ parentId: GROUP_ID }));
+    expect(repo.save).toHaveBeenCalledTimes(1);
+    expect(scheduler.saveAttached).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('TaskService.setParent', () => {
+  const repo = { findOneByOrFail: vi.fn(), save: vi.fn(), findOneBy: vi.fn() };
+  const scheduler = { saveAttached: vi.fn() };
+  let service: TaskService;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    repo.save.mockImplementation((task: object) => Promise.resolve(task));
+    scheduler.saveAttached.mockImplementation((task: object) => Promise.resolve(task));
+    service = new TaskService(repo as never, scheduler as never);
+  });
+
+  it('puts the task under the group through the scheduler, which stretches the group', async () => {
+    repo.findOneByOrFail
+      .mockResolvedValueOnce({ id: 't1', projectId: PROJECT_ID, parentId: null })
+      .mockResolvedValueOnce({ id: GROUP_ID, type: 'group', projectId: PROJECT_ID });
+    await service.setParent('t1', GROUP_ID);
+    expect(scheduler.saveAttached).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't1', parentId: GROUP_ID }),
+      null,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('takes a task out of its group through the scheduler too, so the group shrinks', async () => {
+    repo.findOneByOrFail.mockResolvedValueOnce({
+      id: 't1',
+      projectId: PROJECT_ID,
+      parentId: GROUP_ID,
+    });
+    await service.setParent('t1', null);
+    expect(scheduler.saveAttached).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't1', parentId: null }),
+      GROUP_ID,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('saves a top-level task that stays top-level with a plain save', async () => {
+    repo.findOneByOrFail.mockResolvedValueOnce({ id: 't1', projectId: PROJECT_ID, parentId: null });
+    await service.setParent('t1', null);
+    expect(repo.save).toHaveBeenCalledTimes(1);
+    expect(scheduler.saveAttached).not.toHaveBeenCalled();
   });
 });
 
@@ -142,8 +204,55 @@ describe('TaskService.update', () => {
     expect(repo.save).toHaveBeenCalled();
   });
 
+  it('judges end before start by the day, not the instant', async () => {
+    // Later in the same day, before it in time: the stored days are the same, so it is fine.
+    await expect(
+      service.update('t1', { endDate: '2026-10-07T01:00:00+14:00' as never }),
+    ).resolves.toBeDefined();
+    await expect(
+      service.update('t1', { startDate: '2026-10-10T00:00:00Z' as never }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('gives a milestone no end of its own: it is its start', async () => {
+    repo.findOneByOrFail.mockResolvedValue({ ...stored(), type: 'milestone' });
+    const saved = await service.update('t1', { endDate: '2026-10-20' as never });
+    expect(saved).toMatchObject({ startDate: '2026-10-07', endDate: '2026-10-07' });
+  });
+
+  it('refuses a null date with a 400 (it used to be a 500)', async () => {
+    await expect(service.update('t1', { startDate: null as never })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
   it('passes on the not-found error for an unknown task', async () => {
     repo.findOneByOrFail.mockRejectedValue(new NotFoundException());
     await expect(service.update('nope', { name: 'x' })).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('TaskService.remove', () => {
+  const repo = { findOneByOrFail: vi.fn(), remove: vi.fn() };
+  const scheduler = { refitGroup: vi.fn() };
+  let service: TaskService;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    service = new TaskService(repo as never, scheduler as never);
+  });
+
+  it('fits the group the task was in to the tasks that are left', async () => {
+    repo.findOneByOrFail.mockResolvedValue({ id: 't1', projectId: PROJECT_ID, parentId: GROUP_ID });
+    await service.remove('t1');
+    expect(repo.remove).toHaveBeenCalled();
+    expect(scheduler.refitGroup).toHaveBeenCalledWith(PROJECT_ID, GROUP_ID);
+  });
+
+  it('has no group to fit for a top-level task', async () => {
+    repo.findOneByOrFail.mockResolvedValue({ id: 't1', projectId: PROJECT_ID, parentId: null });
+    await service.remove('t1');
+    expect(scheduler.refitGroup).not.toHaveBeenCalled();
   });
 });
