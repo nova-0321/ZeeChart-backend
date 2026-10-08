@@ -8,6 +8,7 @@ import { AppService } from './app.service.js';
 import { HttpLoggerMiddleware } from './common/http-logger.middleware.js';
 import { HealthModule } from './health/health.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
+import { TaskModule } from './tasks/task.module.js';
 import { DatabaseModule } from './database/database.module.js';
 
 @Module({
@@ -21,6 +22,7 @@ import { DatabaseModule } from './database/database.module.js';
     DatabaseModule,
     HealthModule,
     ProjectsModule,
+    TaskModule,
   ],
   controllers: [AppController],
   providers: [

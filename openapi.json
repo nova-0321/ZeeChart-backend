@@ -3,7 +3,7 @@
   "paths": {
     "/": {
       "get": {
-        "operationId": "getHello",
+        "operationId": "App_getHello",
         "parameters": [],
         "responses": {
           "200": {
@@ -24,7 +24,7 @@
     },
     "/health": {
       "get": {
-        "operationId": "check",
+        "operationId": "Health_check",
         "parameters": [],
         "responses": {
           "200": {
@@ -45,7 +45,7 @@
     },
     "/projects": {
       "post": {
-        "operationId": "create",
+        "operationId": "Projects_create",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -74,7 +74,7 @@
         ]
       },
       "get": {
-        "operationId": "findAll",
+        "operationId": "Projects_findAll",
         "parameters": [],
         "responses": {
           "200": {
@@ -98,7 +98,7 @@
     },
     "/projects/{id}": {
       "get": {
-        "operationId": "findOne",
+        "operationId": "Projects_findOne",
         "parameters": [
           {
             "name": "id",
@@ -126,7 +126,7 @@
         ]
       },
       "patch": {
-        "operationId": "update",
+        "operationId": "Projects_update",
         "parameters": [
           {
             "name": "id",
@@ -164,7 +164,7 @@
         ]
       },
       "delete": {
-        "operationId": "remove",
+        "operationId": "Projects_remove",
         "parameters": [
           {
             "name": "id",
@@ -187,7 +187,7 @@
     },
     "/projects/{id}/archive": {
       "patch": {
-        "operationId": "archive",
+        "operationId": "Projects_archive",
         "parameters": [
           {
             "name": "id",
@@ -217,7 +217,7 @@
     },
     "/projects/{id}/reopen": {
       "patch": {
-        "operationId": "reopen",
+        "operationId": "Projects_reopen",
         "parameters": [
           {
             "name": "id",
@@ -242,6 +242,213 @@
         },
         "tags": [
           "Projects"
+        ]
+      }
+    },
+    "/tasks": {
+      "get": {
+        "operationId": "Task_findByProject",
+        "parameters": [
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Task"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Flat list for a project; the client builds the tree from parentId.",
+        "tags": [
+          "Task"
+        ]
+      },
+      "post": {
+        "operationId": "Task_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Task"
+        ]
+      }
+    },
+    "/tasks/{id}": {
+      "patch": {
+        "operationId": "Task_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaskDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Change any of name, description, dates, progress, priority and color.",
+        "tags": [
+          "Task"
+        ]
+      },
+      "delete": {
+        "operationId": "Task_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "Sub-tasks of a deleted group are kept and become top-level.",
+        "tags": [
+          "Task"
+        ]
+      }
+    },
+    "/tasks/{id}/parent": {
+      "patch": {
+        "operationId": "Task_setParent",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetParentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Move a task under a group, or send { \"parentId\": null } to make it top-level.",
+        "tags": [
+          "Task"
+        ]
+      }
+    },
+    "/tasks/{id}/type": {
+      "patch": {
+        "operationId": "Task_changeType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeTypeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Task"
         ]
       }
     }
@@ -310,6 +517,12 @@
           "archived": {
             "type": "boolean"
           },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            }
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -323,8 +536,97 @@
           "id",
           "name",
           "archived",
+          "tasks",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "progress": {
+            "type": "number"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "startDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "parentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "parent": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Task"
+              }
+            ]
+          },
+          "project": {
+            "$ref": "#/components/schemas/Project"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "progress",
+          "projectId",
+          "type",
+          "priority",
+          "startDate",
+          "endDate",
+          "createdAt",
+          "color",
+          "order",
+          "updatedAt",
+          "parentId",
+          "parent",
+          "project",
+          "children"
         ]
       },
       "UpdateProjectDto": {
@@ -340,6 +642,151 @@
             "type": "boolean"
           }
         }
+      },
+      "TaskDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "Defaults to \"task\".",
+            "enum": [
+              "group",
+              "task",
+              "milestone"
+            ]
+          },
+          "startDate": {
+            "format": "date-time",
+            "type": "string",
+            "description": "\"YYYY-MM-DD\" (a full ISO date-time is accepted too)."
+          },
+          "endDate": {
+            "format": "date-time",
+            "type": "string",
+            "description": "\"YYYY-MM-DD\". Must not be before startDate."
+          },
+          "progress": {
+            "type": "number",
+            "description": "0 to 100. Defaults to 0.",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "priority": {
+            "type": "string",
+            "description": "Defaults to \"medium\".",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "color": {
+            "type": "string",
+            "description": "A hex color such as \"#2a78d6\".",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          },
+          "order": {
+            "type": "number",
+            "description": "Position among the project's tasks. Defaults to the end of the list.",
+            "minimum": 0
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parentId": {
+            "type": "string",
+            "nullable": true,
+            "description": "The group this task belongs to. Leave out (or null) for a top-level task.",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "name",
+          "startDate",
+          "endDate",
+          "color",
+          "projectId"
+        ]
+      },
+      "UpdateTaskDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string"
+          },
+          "startDate": {
+            "format": "date-time",
+            "type": "string",
+            "description": "\"YYYY-MM-DD\" (a full ISO date-time is accepted too)."
+          },
+          "endDate": {
+            "format": "date-time",
+            "type": "string",
+            "description": "\"YYYY-MM-DD\". Must not be before startDate."
+          },
+          "progress": {
+            "type": "number",
+            "description": "0 to 100. Defaults to 0.",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "priority": {
+            "description": "Defaults to \"medium\".",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "type": "string"
+          },
+          "color": {
+            "type": "string",
+            "description": "A hex color such as \"#2a78d6\".",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          }
+        }
+      },
+      "SetParentDto": {
+        "type": "object",
+        "properties": {
+          "parentId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Id of the group to move the task under, or null to make it top-level.",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "parentId"
+        ]
+      },
+      "ChangeTypeDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "group",
+              "task",
+              "milestone"
+            ]
+          }
+        },
+        "required": [
+          "type"
+        ]
       }
     }
   }

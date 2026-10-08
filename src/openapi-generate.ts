@@ -3,9 +3,6 @@ import { writeFileSync } from 'node:fs';
 import { NestFactory } from '@nestjs/core';
 import { createOpenApiDocument } from './openapi.js';
 
-// The app validates its env vars when AppModule is imported, but this script never
-// connects to a database (preview mode). Placeholders keep it runnable in CI and on
-// a fresh clone with no .env; real values, when present, win.
 process.env.DB_HOST ??= 'localhost';
 process.env.DB_USERNAME ??= 'openapi';
 process.env.DB_PASSWORD ??= 'openapi';
