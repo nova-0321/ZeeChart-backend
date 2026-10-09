@@ -9,7 +9,7 @@ process.env.DB_PASSWORD ??= 'openapi';
 process.env.DB_NAME ??= 'openapi';
 
 // Imported after the defaults above: a static import would validate the env first.
-const { AppModule } = await import('./app.module.js');
+const { AppModule } = await import('../app.module.js');
 
 const app = await NestFactory.create(AppModule, { preview: true, logger: false });
 const document = createOpenApiDocument(app);

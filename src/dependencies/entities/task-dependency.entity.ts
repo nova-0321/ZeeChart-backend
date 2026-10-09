@@ -8,7 +8,7 @@ import {
   type Relation,
   Unique,
 } from 'typeorm';
-import { Task } from './task.entity.js';
+import { Task } from '../../tasks/entities/task.entity.js';
 
 /** "fromTask must happen before toTask": an arrow between two bars of the same project. */
 @Entity('task_dependencies')

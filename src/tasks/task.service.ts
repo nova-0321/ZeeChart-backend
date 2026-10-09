@@ -6,7 +6,7 @@ import { Project } from '../projects/entities/project.entity.js';
 import { TaskDto } from './dto/task.dto.js';
 import type { UpdateTaskDto } from './dto/update-task.dto.js';
 import { Task } from './entities/task.entity.js';
-import { TaskScheduler } from './task-scheduler.service.js';
+import { TaskScheduler } from '../scheduling/task-scheduler.service.js';
 
 /** The day ("YYYY-MM-DD") of a date as the API takes it: what is stored is its first ten characters. */
 const dayOf = (date: Date | string) =>

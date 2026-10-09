@@ -22,6 +22,97 @@
         ]
       }
     },
+    "/auth/signup": {
+      "post": {
+        "operationId": "Auth_signUp",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignUpDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Make an account and sign in. 409 when the email already has one.",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/signin": {
+      "post": {
+        "operationId": "Auth_signIn",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Sign in. 401 for a wrong email or password (the same message for both).",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "Auth_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthUserDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The signed-in user. 401 without a valid token, or when the account no longer exists.",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "Health_check",
@@ -71,6 +162,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "The events of a project, earliest first.",
         "tags": [
           "Events"
@@ -101,6 +197,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Events"
         ]
@@ -141,6 +242,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Change any of name, color and dates.",
         "tags": [
           "Events"
@@ -163,6 +269,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Events"
         ]
@@ -194,6 +305,12 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A new project, owned by you. No one has it open yet, so no one is told.",
         "tags": [
           "Projects"
         ]
@@ -216,6 +333,12 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Your projects, newest first.",
         "tags": [
           "Projects"
         ]
@@ -246,6 +369,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Projects"
         ]
@@ -284,6 +412,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Projects"
         ]
@@ -305,6 +438,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Projects"
         ]
@@ -335,6 +473,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Projects"
         ]
@@ -365,6 +508,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Projects"
         ]
@@ -398,6 +546,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Flat list for a project; the client builds the tree from parentId.",
         "tags": [
           "Task"
@@ -428,6 +581,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Task"
         ]
@@ -468,6 +626,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Change any of name, description, dates, progress, priority and color.",
         "tags": [
           "Task"
@@ -490,6 +653,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Sub-tasks of a deleted group are kept and become top-level.",
         "tags": [
           "Task"
@@ -531,6 +699,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Move a task under a group, or send { \"parentId\": null } to make it top-level.",
         "tags": [
           "Task"
@@ -572,6 +745,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Put a task at a place in the list: under a group (or at the top level, with null) and at an\nindex among the tasks there. The tasks of that level are numbered again to keep that order.",
         "tags": [
           "Task"
@@ -613,6 +791,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Task"
         ]
@@ -646,6 +829,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Every link between the tasks of a project.",
         "tags": [
           "Dependency"
@@ -676,6 +864,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Make `toTaskId` come after `fromTaskId`. Rejects self links, duplicates and cycles; moves the successor later if it is too early.",
         "tags": [
           "Dependency"
@@ -717,6 +910,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Change the type and/or the lag of a link.",
         "tags": [
           "Dependency"
@@ -739,6 +937,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "Dependency"
         ]
@@ -754,7 +957,99 @@
   "tags": [],
   "servers": [],
   "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
     "schemas": {
+      "SignUpDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name shown in the app. Trimmed; a name of only spaces is rejected.",
+            "maxLength": 100
+          },
+          "email": {
+            "type": "string",
+            "description": "Trimmed and lower-cased before it is checked and stored.",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "description": "8 to 128 characters. Not trimmed: spaces count.",
+            "minLength": 8,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "password"
+        ]
+      },
+      "AuthUserDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "createdAt"
+        ]
+      },
+      "AuthResponseDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/AuthUserDto"
+          }
+        },
+        "required": [
+          "accessToken",
+          "user"
+        ]
+      },
+      "SignInDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Trimmed and lower-cased, as on sign-up.",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
       "HealthResponseDto": {
         "type": "object",
         "properties": {
@@ -778,6 +1073,40 @@
           "status",
           "uptime",
           "timestamp"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "passwordHash": {
+            "type": "string",
+            "description": "The scrypt hash (see password.ts). Never selected unless asked for, never sent."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "passwordHash",
+          "createdAt",
+          "updatedAt"
         ]
       },
       "Task": {
@@ -877,6 +1206,18 @@
           "name": {
             "type": "string"
           },
+          "ownerId": {
+            "type": "string",
+            "description": "Who the project belongs to: the only one who can see or change it (until #18 / #20)."
+          },
+          "owner": {
+            "description": "Every project has an owner; deleting the account deletes its projects.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ]
+          },
           "description": {
             "type": "string"
           },
@@ -901,6 +1242,8 @@
         "required": [
           "id",
           "name",
+          "ownerId",
+          "owner",
           "archived",
           "tasks",
           "createdAt",
