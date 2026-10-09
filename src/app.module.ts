@@ -9,6 +9,7 @@ import { HttpLoggerMiddleware } from './common/http-logger.middleware.js';
 import { EventsModule } from './events/events.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
+import { RealtimeModule } from './realtime/realtime.module.js';
 import { TaskModule } from './tasks/task.module.js';
 import { DatabaseModule } from './database/database.module.js';
 
@@ -25,6 +26,7 @@ import { DatabaseModule } from './database/database.module.js';
     EventsModule,
     ProjectsModule,
     TaskModule,
+    RealtimeModule,
   ],
   controllers: [AppController],
   providers: [
