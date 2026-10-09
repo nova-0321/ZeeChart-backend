@@ -52,8 +52,14 @@ export class TaskScheduler {
    * the groups above stretch to cover it and what follows them is pushed, all or nothing. Refused
    * when a link ties it to a group above it. Returns the saved task.
    */
-  async saveAttached(task: Task, oldParentId: string | null = null): Promise<Task> {
+  async saveAttached(
+    task: Task,
+    oldParentId: string | null = null,
+    /** More to save in the same transaction (the new order of a level). */
+    also?: (manager: EntityManager) => Promise<void>,
+  ): Promise<Task> {
     return this.taskRepo.manager.transaction(async (manager) => {
+      if (also) await also(manager);
       const saved = await manager.save(Task, task);
       const { tasks, links } = await this.load(saved.projectId, manager);
       try {
