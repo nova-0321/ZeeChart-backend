@@ -77,6 +77,11 @@ jobs:
 
       - run: npm ci
 
+      # The database starts empty: create the tables the tests use, the same way production gets
+      # them (as the migrations job below does).
+      - name: Apply migrations
+        run: npm run migration:run
+
       - name: E2E tests
         run: npm run test:e2e
 

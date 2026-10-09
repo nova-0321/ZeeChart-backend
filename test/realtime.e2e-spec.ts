@@ -100,6 +100,16 @@ describe('Realtime (e2e)', () => {
     expect(await inRoom(unknown)).toEqual([]);
   });
 
+  it('a join still answers when the database check fails', async () => {
+    const socket = await connect();
+    const spy = vi.spyOn(projects, 'existsBy').mockRejectedValueOnce(new Error('db down'));
+    await expect(socket.emitWithAck('join', { projectId: randomUUID() })).resolves.toEqual({
+      ok: false,
+      error: 'Could not check the project. Try again.',
+    });
+    spy.mockRestore();
+  });
+
   it('is in one project room at a time: joining another leaves the first', async () => {
     const [first, second] = [await project('b1'), await project('b2')];
     const socket = await connect();

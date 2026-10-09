@@ -75,9 +75,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (typeof projectId !== 'string' || !isUUID(projectId)) {
       return { ok: false, error: 'projectId must be a UUID' };
     }
-    if (!(await this.projects.existsBy({ id: projectId }))) {
-      return { ok: false, error: `Project ${projectId} not found` };
+    // The client waits for this answer: a failing check must still give one, not leave it hanging.
+    let exists: boolean;
+    try {
+      exists = await this.projects.existsBy({ id: projectId });
+    } catch (error) {
+      this.logger.error(`Could not check project ${projectId}`, error as Error);
+      return { ok: false, error: 'Could not check the project. Try again.' };
     }
+    if (!exists) return { ok: false, error: `Project ${projectId} not found` };
     const left = await this.leaveProjects(socket, projectRoom(projectId));
     await socket.join(projectRoom(projectId));
     dataOf(socket).projectId = projectId;
