@@ -256,3 +256,92 @@ describe('TaskService.remove', () => {
     expect(scheduler.refitGroup).not.toHaveBeenCalled();
   });
 });
+
+describe('TaskService.move', () => {
+  const manager = { update: vi.fn(), save: vi.fn() };
+  const repo = {
+    findOneByOrFail: vi.fn(),
+    findOneBy: vi.fn(),
+    find: vi.fn(),
+    manager: { transaction: vi.fn() },
+  };
+  const scheduler = { saveAttached: vi.fn() };
+  let service: TaskService;
+  const row = (id: string, order: number, parentId: string | null = null) => ({
+    id,
+    order,
+    parentId,
+    projectId: PROJECT_ID,
+    type: 'task',
+  });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    repo.manager.transaction.mockImplementation((work: (m: typeof manager) => unknown) =>
+      work(manager),
+    );
+    manager.save.mockImplementation((_entity: unknown, task: object) => Promise.resolve(task));
+    scheduler.saveAttached.mockImplementation(
+      async (task: object, _old: unknown, also?: (m: typeof manager) => Promise<void>) => {
+        if (also) await also(manager);
+        return task;
+      },
+    );
+    service = new TaskService(repo as never, scheduler as never);
+  });
+
+  it('puts a task at a new place in its level and numbers the level again', async () => {
+    repo.findOneByOrFail.mockResolvedValue(row('c', 3));
+    repo.find.mockResolvedValue([row('a', 1), row('b', 2), row('c', 3)]);
+    const saved = await service.move('c', null, 0);
+    expect(saved).toMatchObject({ id: 'c', order: 1, parentId: null });
+    expect(manager.update).toHaveBeenCalledWith(expect.anything(), { id: 'a' }, { order: 2 });
+    expect(manager.update).toHaveBeenCalledWith(expect.anything(), { id: 'b' }, { order: 3 });
+    expect(scheduler.saveAttached).not.toHaveBeenCalled();
+  });
+
+  it('puts an index past the end at the end, and leaves tasks already in place alone', async () => {
+    repo.findOneByOrFail.mockResolvedValue(row('a', 1));
+    repo.find.mockResolvedValue([row('a', 1), row('b', 2), row('c', 3)]);
+    const saved = await service.move('a', null, 99);
+    expect(saved).toMatchObject({ id: 'a', order: 3 });
+    expect(manager.update).toHaveBeenCalledWith(expect.anything(), { id: 'b' }, { order: 1 });
+    expect(manager.update).toHaveBeenCalledWith(expect.anything(), { id: 'c' }, { order: 2 });
+  });
+
+  it('moves into a group through the scheduler (the groups refit), with the new order in the same transaction', async () => {
+    repo.findOneByOrFail
+      .mockResolvedValueOnce(row('t', 5))
+      .mockResolvedValueOnce({ id: GROUP_ID, type: 'group', projectId: PROJECT_ID });
+    repo.find.mockResolvedValue([row('k', 1, GROUP_ID)]);
+    const saved = await service.move('t', GROUP_ID, 1);
+    expect(saved).toMatchObject({ id: 't', parentId: GROUP_ID, order: 2 });
+    expect(scheduler.saveAttached).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't', parentId: GROUP_ID }),
+      null,
+      expect.any(Function),
+    );
+  });
+
+  it('refuses a milestone as the parent', async () => {
+    repo.findOneByOrFail
+      .mockResolvedValueOnce(row('t', 5))
+      .mockResolvedValueOnce({ id: GROUP_ID, type: 'milestone', projectId: PROJECT_ID });
+    await expect(service.move('t', GROUP_ID, 0)).rejects.toThrow('A milestone cannot hold tasks');
+    expect(manager.update).not.toHaveBeenCalled();
+  });
+
+  it('turns a plain task it is dropped onto into a group, in the same transaction', async () => {
+    repo.findOneByOrFail
+      .mockResolvedValueOnce(row('t', 5))
+      .mockResolvedValueOnce({ id: GROUP_ID, type: 'task', projectId: PROJECT_ID });
+    repo.find.mockResolvedValue([]);
+    const saved = await service.move('t', GROUP_ID, 0);
+    expect(manager.update).toHaveBeenCalledWith(
+      expect.anything(),
+      { id: GROUP_ID },
+      { type: 'group' },
+    );
+    expect(saved).toMatchObject({ id: 't', parentId: GROUP_ID, order: 1 });
+  });
+});

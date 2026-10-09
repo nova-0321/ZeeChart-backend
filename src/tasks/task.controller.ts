@@ -11,6 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ChangeTypeDto } from './dto/change-type.dto.js';
+import { MoveTaskDto } from './dto/move-task.dto.js';
 import { SetParentDto } from './dto/set-parent.dto.js';
 import { TaskDto } from './dto/task.dto.js';
 import { UpdateTaskDto } from './dto/update-task.dto.js';
@@ -48,6 +49,15 @@ export class TaskController {
   @Patch(':id/parent')
   setParent(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetParentDto) {
     return this.taskService.setParent(id, dto.parentId);
+  }
+
+  /**
+   * Put a task at a place in the list: under a group (or at the top level, with null) and at an
+   * index among the tasks there. The tasks of that level are numbered again to keep that order.
+   */
+  @Patch(':id/move')
+  move(@Param('id', ParseUUIDPipe) id: string, @Body() dto: MoveTaskDto) {
+    return this.taskService.move(id, dto.parentId, dto.index);
   }
 
   @Patch(':id/type')

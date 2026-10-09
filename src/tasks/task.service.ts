@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository, type EntityManager } from 'typeorm';
 import { rejectNulls } from '../common/reject-nulls.js';
 import { Project } from '../projects/entities/project.entity.js';
 import { TaskDto } from './dto/task.dto.js';
@@ -89,6 +89,47 @@ export class TaskService {
       : this.taskRepo.save(task);
   }
 
+  /**
+   * Put the task at `index` among the tasks of `parentId` (null: the top level). Those tasks are
+   * numbered 1, 2, 3... in their new order; the tree is built per group, so only the order inside a
+   * level matters. A change of group goes through the scheduler like setParent (the group it goes
+   * in and the one it left fit what is in them), and all of it is one transaction. A plain task as
+   * the parent becomes a group (and so takes the days of what it holds).
+   */
+  async move(taskId: string, parentId: string | null, index: number) {
+    const task = await this.taskRepo.findOneByOrFail({ id: taskId });
+    // Dropped onto a plain task: that task becomes a group holding it (in the same transaction).
+    const parent = parentId
+      ? await this.assertValidParent(task.id, task.projectId, parentId, true)
+      : null;
+    const becomesGroup = parent?.type === 'task' ? parent : null;
+    const siblings = await this.taskRepo.find({
+      where: { projectId: task.projectId, parentId: parentId ?? IsNull() },
+      order: { order: 'ASC', createdAt: 'ASC', id: 'ASC' },
+    });
+    const level = siblings.filter((sibling) => sibling.id !== task.id);
+    level.splice(Math.min(index, level.length), 0, task);
+    const orderOf = new Map(level.map((item, position) => [item.id, position + 1]));
+    const renumber = async (manager: EntityManager) => {
+      if (becomesGroup) await manager.update(Task, { id: becomesGroup.id }, { type: 'group' });
+      for (const sibling of level) {
+        if (sibling.id === task.id || sibling.order === orderOf.get(sibling.id)) continue;
+        await manager.update(Task, { id: sibling.id }, { order: orderOf.get(sibling.id) });
+      }
+    };
+
+    const oldParentId = task.parentId;
+    task.parentId = parentId;
+    task.order = orderOf.get(task.id)!;
+    if (parentId !== oldParentId) {
+      return this.scheduler.saveAttached(task, oldParentId, renumber);
+    }
+    return this.taskRepo.manager.transaction(async (manager) => {
+      await renumber(manager);
+      return manager.save(Task, task);
+    });
+  }
+
   async changeType(id: string, type: Task['type']) {
     const task = await this.taskRepo.findOneByOrFail({ id });
 
@@ -129,24 +170,31 @@ export class TaskService {
   }
 
   /** `taskId` is null while creating: a new task has no descendants to cycle with. */
+  /**
+   * Checks a new parent and returns it. `taskMayBecomeGroup`: a plain task is accepted too (the
+   * caller turns it into a group); a milestone never holds tasks.
+   */
   private async assertValidParent(
     taskId: string | null,
     projectId: string | null,
     parentId: string,
-  ) {
+    taskMayBecomeGroup = false,
+  ): Promise<Task> {
     if (parentId === taskId) {
       throw new BadRequestException('A task cannot be its own parent');
     }
 
     const parent = await this.taskRepo.findOneByOrFail({ id: parentId });
-    if (parent.type !== 'group') {
-      throw new BadRequestException('Parent must be a group');
+    if (parent.type !== 'group' && !(taskMayBecomeGroup && parent.type === 'task')) {
+      throw new BadRequestException(
+        parent.type === 'milestone' ? 'A milestone cannot hold tasks' : 'Parent must be a group',
+      );
     }
     if (parent.projectId !== projectId) {
       throw new BadRequestException('Parent belongs to another project');
     }
 
-    if (!taskId) return;
+    if (!taskId) return parent;
 
     // The new parent must not be a descendant of this task.
     let current: Task | null = parent;
@@ -156,5 +204,6 @@ export class TaskService {
       }
       current = await this.taskRepo.findOneBy({ id: current.parentId });
     }
+    return parent;
   }
 }

@@ -537,6 +537,47 @@
         ]
       }
     },
+    "/tasks/{id}/move": {
+      "patch": {
+        "operationId": "Task_move",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveTaskDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Put a task at a place in the list: under a group (or at the top level, with null) and at an\nindex among the tasks there. The tasks of that level are numbered again to keep that order.",
+        "tags": [
+          "Task"
+        ]
+      }
+    },
     "/tasks/{id}/type": {
       "patch": {
         "operationId": "Task_changeType",
@@ -1123,6 +1164,26 @@
         },
         "required": [
           "parentId"
+        ]
+      },
+      "MoveTaskDto": {
+        "type": "object",
+        "properties": {
+          "parentId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Id of the group the task goes in, or null for the top level.",
+            "format": "uuid"
+          },
+          "index": {
+            "type": "number",
+            "description": "Its place among the tasks of that group (or of the top level), counting from 0.",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "parentId",
+          "index"
         ]
       },
       "ChangeTypeDto": {
