@@ -60,17 +60,30 @@ export class DependencyService {
         lagDays: dto.lagDays ?? 0,
       }),
     );
-    await this.scheduler.rescheduleFrom(from.projectId, from.id);
+    try {
+      await this.scheduler.rescheduleFrom(from.projectId, from.id);
+    } catch (error) {
+      // Not saved at all if it could not be applied: the client got an error, so no link may stay.
+      await this.dependencyRepo.delete(dependency.id);
+      throw error;
+    }
     return dependency;
   }
 
   /** Change the type and/or the lag; the successor is moved if the new rule needs it. */
   async update(id: string, dto: UpdateDependencyDto) {
     const dependency = await this.dependencyRepo.findOneByOrFail({ id });
+    const old = { type: dependency.type, lagDays: dependency.lagDays };
     Object.assign(dependency, dto);
     await this.scheduler.assertSchedulable(dependency.projectId, dependency);
     const saved = await this.dependencyRepo.save(dependency);
-    await this.scheduler.rescheduleFrom(saved.projectId, saved.fromTaskId);
+    try {
+      await this.scheduler.rescheduleFrom(saved.projectId, saved.fromTaskId);
+    } catch (error) {
+      // Put the link back as it was: the client got an error, so it must not have changed.
+      await this.dependencyRepo.update({ id }, old);
+      throw error;
+    }
     return saved;
   }
 

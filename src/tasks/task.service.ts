@@ -1,11 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { rejectNulls } from '../common/reject-nulls.js';
 import { Project } from '../projects/entities/project.entity.js';
 import { TaskDto } from './dto/task.dto.js';
 import type { UpdateTaskDto } from './dto/update-task.dto.js';
 import { Task } from './entities/task.entity.js';
 import { TaskScheduler } from './task-scheduler.service.js';
+
+/** The day ("YYYY-MM-DD") of a date as the API takes it: what is stored is its first ten characters. */
+const dayOf = (date: Date | string) =>
+  typeof date === 'string' ? date.slice(0, 10) : date.toISOString().slice(0, 10);
 
 @Injectable()
 export class TaskService {
@@ -19,12 +24,13 @@ export class TaskService {
   findByProject(projectId: string) {
     return this.taskRepo.find({
       where: { projectId },
-      order: { order: 'ASC' },
+      // Tasks with the same order (made at the same moment) keep a fixed place.
+      order: { order: 'ASC', createdAt: 'ASC', id: 'ASC' },
     });
   }
 
   async create(dto: TaskDto) {
-    if (new Date(dto.endDate) < new Date(dto.startDate)) {
+    if (dayOf(dto.endDate) < dayOf(dto.startDate)) {
       throw new BadRequestException('The end date must not be before the start date');
     }
     // The foreign key would reject a missing project too, but only with a vague 409.
@@ -39,10 +45,13 @@ export class TaskService {
     // insert fails with "null value in column ... violates not-null constraint".
     const task = this.taskRepo.create({
       ...dto,
+      // A milestone is one day: it has no end of its own.
+      ...(dto.type === 'milestone' ? { endDate: dto.startDate } : {}),
       progress: dto.progress ?? 0,
       order: dto.order ?? (await this.nextOrder(dto.projectId)),
     });
-    return this.taskRepo.save(task);
+    // In a group, the group has to cover the task (and a link may forbid it): the scheduler does both.
+    return task.parentId ? this.scheduler.saveAttached(task) : this.taskRepo.save(task);
   }
 
   /** One past the highest order in the project, so a new task goes to the end of the list. */
@@ -58,7 +67,10 @@ export class TaskService {
   /** Children are kept: the FK is ON DELETE SET NULL, so they become top-level. */
   async remove(id: string) {
     const task = await this.taskRepo.findOneByOrFail({ id });
+    const { parentId, projectId } = task;
     await this.taskRepo.remove(task);
+    // The group the task was in shrinks to the tasks that are left.
+    if (parentId) await this.scheduler.refitGroup(projectId, parentId);
   }
 
   /** Move a task under a group, or pass null to make it top-level. */
@@ -69,8 +81,12 @@ export class TaskService {
       await this.assertValidParent(task.id, task.projectId, parentId);
     }
 
+    const oldParentId = task.parentId;
     task.parentId = parentId;
-    return this.taskRepo.save(task);
+    // Both the group it goes in and the group it left have to fit what is in them now.
+    return parentId || oldParentId
+      ? this.scheduler.saveAttached(task, oldParentId)
+      : this.taskRepo.save(task);
   }
 
   async changeType(id: string, type: Task['type']) {
@@ -86,6 +102,7 @@ export class TaskService {
     }
 
     task.type = type;
+    if (type === 'milestone') task.endDate = task.startDate;
     return this.taskRepo.save(task);
   }
 
@@ -94,15 +111,17 @@ export class TaskService {
    * invert the range. New dates also move what the dependencies tie to this task (see schedule.ts).
    */
   async update(id: string, dto: UpdateTaskDto) {
+    rejectNulls(dto, ['description']);
     const task = await this.taskRepo.findOneByOrFail({ id });
     const before = {
       start: String(task.startDate).slice(0, 10),
       end: String(task.endDate).slice(0, 10),
     };
     Object.assign(task, dto);
-    if (new Date(task.endDate) < new Date(task.startDate)) {
+    if (dayOf(task.endDate) < dayOf(task.startDate)) {
       throw new BadRequestException('The end date must not be before the start date');
     }
+    if (task.type === 'milestone') task.endDate = task.startDate;
     const moved =
       String(task.startDate).slice(0, 10) !== before.start ||
       String(task.endDate).slice(0, 10) !== before.end;
