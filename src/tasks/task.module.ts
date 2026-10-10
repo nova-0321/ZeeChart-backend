@@ -1,17 +1,21 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { DependencyController } from './dependency.controller.js';
-import { DependencyService } from './dependency.service.js';
-import { TaskController } from './task.controller.js';
-import { TaskDependency } from './entities/task-dependency.entity.js';
+import { AuthModule } from '../auth/auth.module.js';
+import { SchedulingModule } from '../scheduling/scheduling.module.js';
 import { Task } from './entities/task.entity.js';
-import { TaskScheduler } from './task-scheduler.service.js';
+import { TaskController } from './task.controller.js';
 import { TaskService } from './task.service.js';
 
+/** Tasks: create, edit, move, regroup, delete. Date changes go through scheduling. */
 @Module({
-  imports: [TypeOrmModule.forFeature([Task, TaskDependency])],
-  controllers: [TaskController, DependencyController],
-  providers: [TaskService, DependencyService, TaskScheduler],
+  imports: [
+    // AuthGuard (and the JwtService it needs).
+    AuthModule,
+    TypeOrmModule.forFeature([Task]),
+    SchedulingModule,
+  ],
+  controllers: [TaskController],
+  providers: [TaskService],
   exports: [TaskService],
 })
 export class TaskModule {}

@@ -4,8 +4,8 @@ import { Repository } from 'typeorm';
 import type { DependencyDto } from './dto/dependency.dto.js';
 import type { UpdateDependencyDto } from './dto/update-dependency.dto.js';
 import { TaskDependency } from './entities/task-dependency.entity.js';
-import { Task } from './entities/task.entity.js';
-import { TaskScheduler } from './task-scheduler.service.js';
+import { Task } from '../tasks/entities/task.entity.js';
+import { TaskScheduler } from '../scheduling/task-scheduler.service.js';
 
 @Injectable()
 export class DependencyService {

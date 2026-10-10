@@ -5,8 +5,9 @@ import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { io, type Socket } from 'socket.io-client';
 import request from 'supertest';
-import type { Repository } from 'typeorm';
+import { Like, type Repository } from 'typeorm';
 import { AppModule } from '../src/app.module.js';
+import { User } from '../src/auth/entities/user.entity.js';
 import { Project } from '../src/projects/entities/project.entity.js';
 import { RealtimeGateway } from '../src/realtime/realtime.gateway.js';
 import { clientRoom, projectRoom } from '../src/realtime/realtime.rooms.js';
@@ -25,6 +26,11 @@ describe('Realtime (e2e)', () => {
   let realtime: RealtimeService;
   const sockets: Socket[] = [];
   const made: string[] = [];
+  // The projects belong to one account, and the REST calls are made as it (only an owner may
+  // change a project; see projects/project-access.ts).
+  let users: Repository<User>;
+  let ownerId: string;
+  let ownerToken: string;
 
   const connect = async (clientId?: unknown) => {
     const socket = io(url, {
@@ -40,7 +46,9 @@ describe('Realtime (e2e)', () => {
     return socket;
   };
   const project = async (name: string) => {
-    const saved = await projects.save(projects.create({ name: `zzrt-${name}-${Date.now()}` }));
+    const saved = await projects.save(
+      projects.create({ name: `zzrt-${name}-${Date.now()}`, ownerId }),
+    );
     made.push(saved.id);
     return saved.id;
   };
@@ -66,6 +74,15 @@ describe('Realtime (e2e)', () => {
     projects = app.get(getRepositoryToken(Project));
     gateway = app.get(RealtimeGateway);
     realtime = app.get(RealtimeService);
+    users = app.get(getRepositoryToken(User));
+    const signedUp = (
+      await request(app.getHttpServer())
+        .post('/auth/signup')
+        .send({ name: 'Owner', email: `zzrt-${randomUUID()}@example.com`, password: 'pass-word-1' })
+        .expect(201)
+    ).body as { accessToken: string; user: { id: string } };
+    ownerToken = signedUp.accessToken;
+    ownerId = signedUp.user.id;
   });
 
   afterEach(() => {
@@ -74,6 +91,8 @@ describe('Realtime (e2e)', () => {
 
   afterAll(async () => {
     if (made.length) await projects.delete(made);
+    // The account goes too (and any project of it still there, by cascade).
+    await users.delete({ email: Like('zzrt-%') });
     await app.close();
   });
 
@@ -213,7 +232,9 @@ describe('Realtime (e2e)', () => {
       await other.emitWithAck('join', { projectId });
       return { projectId, senderId, toSender: inbox(sender), toOther: inbox(other) };
     };
-    const http = () => request(app.getHttpServer());
+    // As the owner of the test projects.
+    const http = () =>
+      request.agent(app.getHttpServer()).set('Authorization', `Bearer ${ownerToken}`);
     const newTask = (projectId: string, senderId: string, name: string, extra = {}) =>
       http()
         .post('/tasks')

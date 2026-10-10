@@ -12,12 +12,14 @@ export class ProjectsService {
     private readonly projectRepo: Repository<Project>,
   ) {}
 
-  create(createProjectDto: CreateProjectDto) {
-    return this.projectRepo.save(this.projectRepo.create(createProjectDto));
+  /** A new project, owned by `ownerId`. */
+  create(createProjectDto: CreateProjectDto, ownerId: string) {
+    return this.projectRepo.save(this.projectRepo.create({ ...createProjectDto, ownerId }));
   }
 
-  findAll() {
-    return this.projectRepo.find({ order: { createdAt: 'DESC' } });
+  /** The projects of one owner, newest first (archived ones included). */
+  findAll(ownerId: string) {
+    return this.projectRepo.find({ where: { ownerId }, order: { createdAt: 'DESC' } });
   }
 
   async findOne(id: string) {

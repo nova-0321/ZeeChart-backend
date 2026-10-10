@@ -10,8 +10,8 @@ import {
   type DatedChange,
   type ScheduleLink,
 } from './schedule.js';
-import { TaskDependency } from './entities/task-dependency.entity.js';
-import { Task } from './entities/task.entity.js';
+import { TaskDependency } from '../dependencies/entities/task-dependency.entity.js';
+import { Task } from '../tasks/entities/task.entity.js';
 
 const day = (date: Date | string) => String(date).slice(0, 10);
 

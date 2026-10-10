@@ -2,7 +2,12 @@ import type { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule, type OpenAPIObject } from '@nestjs/swagger';
 
 export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
-  const config = new DocumentBuilder().setTitle('ZeeChart API').setVersion('0.0.1').build();
+  const config = new DocumentBuilder()
+    .setTitle('ZeeChart API')
+    .setVersion('0.0.1')
+    // Sign-in tokens go in `Authorization: Bearer <token>` (see auth/).
+    .addBearerAuth()
+    .build();
 
   return SwaggerModule.createDocument(app, config, {
     operationIdFactory: (controllerKey, methodKey) =>

@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
-import { createOpenApiDocument } from './openapi.js';
+import { createOpenApiDocument } from './openapi/openapi.js';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ConfiguredIoAdapter } from './realtime/socket-io.adapter.js';

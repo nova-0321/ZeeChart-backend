@@ -5,12 +5,14 @@ import { APP_FILTER } from '@nestjs/core';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { AuthModule } from './auth/auth.module.js';
 import { HttpLoggerMiddleware } from './common/http-logger.middleware.js';
 import { EventsModule } from './events/events.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { TaskModule } from './tasks/task.module.js';
+import { DependenciesModule } from './dependencies/dependencies.module.js';
 import { DatabaseModule } from './database/database.module.js';
 
 @Module({
@@ -22,10 +24,12 @@ import { DatabaseModule } from './database/database.module.js';
       validationSchema: envValidationSchema,
     }),
     DatabaseModule,
+    AuthModule,
     HealthModule,
     EventsModule,
     ProjectsModule,
     TaskModule,
+    DependenciesModule,
     RealtimeModule,
   ],
   controllers: [AppController],
