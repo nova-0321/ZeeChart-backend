@@ -17,5 +17,7 @@ import { TaskDependency } from './entities/task-dependency.entity.js';
   ],
   controllers: [DependencyController],
   providers: [DependencyService],
+  // Restoring a deleted task brings its links back through the same rules (revisions).
+  exports: [DependencyService],
 })
 export class DependenciesModule {}

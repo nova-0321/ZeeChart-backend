@@ -53,23 +53,25 @@ One event, `changed`:
 ```ts
 interface ChangeMessage {
   projectId: string;
-  entity: 'project' | 'task' | 'dependency' | 'event' | 'member';
+  entity: 'project' | 'task' | 'dependency' | 'event' | 'member' | 'revision' | 'version';
   action: 'create' | 'update' | 'delete' | 'resync';
   id?: string; // the row the request was about; absent for resync
 }
 ```
 
-| Routes                                                        | Message                                                                                 |
-| ------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `POST /tasks`                                                 | `task` `create`, the new task's id                                                      |
-| `PATCH /tasks/:id`, `/:id/parent`, `/:id/move`, `/:id/type`   | `task` `update`                                                                         |
-| `DELETE /tasks/:id`                                           | `task` `delete`                                                                         |
-| `POST`, `PATCH`, `DELETE /dependencies`                       | `dependency` `create` / `update` / `delete`                                             |
-| `POST`, `PATCH`, `DELETE /events`                             | `event` `create` / `update` / `delete`                                                  |
-| `PATCH /projects/:id`, `/:id/archive`, `/:id/reopen`          | `project` `update`                                                                      |
-| `DELETE /projects/:id`                                        | `project` `delete` (whoever has it open should move off it)                             |
-| `POST /projects/:id/members`, `PATCH` / `DELETE /members/:id` | `member` `create` / `update` / `delete`, the member's id                                |
-| `POST /projects`                                              | nothing: only the owner changes the project list, and no one is in a new project's room |
+| Routes                                                                             | Message                                                                                 |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `POST /tasks`                                                                      | `task` `create`, the new task's id                                                      |
+| `PATCH /tasks/:id`, `/:id/parent`, `/:id/move`, `/:id/type`                        | `task` `update`                                                                         |
+| `DELETE /tasks/:id`                                                                | `task` `delete`                                                                         |
+| `POST`, `PATCH`, `DELETE /dependencies`                                            | `dependency` `create` / `update` / `delete`                                             |
+| `POST`, `PATCH`, `DELETE /events`                                                  | `event` `create` / `update` / `delete`                                                  |
+| `PATCH /projects/:id`, `/:id/archive`, `/:id/reopen`                               | `project` `update`                                                                      |
+| `DELETE /projects/:id`                                                             | `project` `delete` (whoever has it open should move off it)                             |
+| `POST /projects/:id/members`, `PATCH` / `DELETE /members/:id`                      | `member` `create` / `update` / `delete`, the member's id                                |
+| `POST /revisions/:id/restore`                                                      | `revision` `update`, the revision's id (a task, an event or the project changed)        |
+| `POST /projects/:id/versions`, `PATCH /versions/:id`, `POST /versions/:id/restore` | `version` `create` / `update` (a restore changes the whole project)                     |
+| `POST /projects`                                                                   | nothing: only the owner changes the project list, and no one is in a new project's room |
 
 ### Your own memberships
 
@@ -158,6 +160,11 @@ that leaves the room disappears from the presence list: clients drop its cursor 
 - `project` `update`: reload the project (name, archived).
 - `project` `delete`: leave it, and show another project.
 - `resync`: reload everything of the project.
+- `revision`: a task, an event or the project was restored from its history: reload everything
+  of the project, and its history if it is shown. (Any change adds to the history: reload a shown
+  history on every message.)
+- `version`: a version was saved, starred, or restored (then the whole project changed): reload
+  everything of the project, and its versions if they are shown.
 - `member`: reload the members. When it is about you (or a project you don't have open), reload
   your project list too: your role in it, or the project itself, changed. Removed from the project
   you have open: leave it, and show another project.

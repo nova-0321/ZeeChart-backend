@@ -10,6 +10,7 @@ import { HttpLoggerMiddleware } from './common/http-logger.middleware.js';
 import { EventsModule } from './events/events.module.js';
 import { HealthModule } from './health/health.module.js';
 import { MembersModule } from './members/members.module.js';
+import { RevisionsModule } from './revisions/revisions.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { TaskModule } from './tasks/task.module.js';
@@ -33,6 +34,9 @@ import { DatabaseModule } from './database/database.module.js';
     TaskModule,
     DependenciesModule,
     RealtimeModule,
+    // After RealtimeModule: its interceptor runs inside the live one, so a change's history is
+    // written before the others are told of the change.
+    RevisionsModule,
   ],
   controllers: [AppController],
   providers: [

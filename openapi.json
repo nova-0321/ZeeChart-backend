@@ -1102,6 +1102,433 @@
           "Dependency"
         ]
       }
+    },
+    "/projects/{id}/revisions": {
+      "get": {
+        "operationId": "ProjectRevisions_list",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "required": false,
+            "in": "query",
+            "description": "The id of the last revision of the previous page: the next page goes on after it.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "How many: 50 when left out, at most 100.",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RevisionDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The project's history, newest first, 50 at a time (up to 100 with `limit`). For the next page,\npass the id of the last one as `before`.",
+        "tags": [
+          "ProjectRevisions"
+        ]
+      }
+    },
+    "/revisions/{id}/restore": {
+      "post": {
+        "operationId": "Revisions_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Put a task, an event or the project back the way it was right after this revision (a deleted\none comes back, with its links where the other task is still there). It is recorded as a new\nchange (\"Restored to version N\"). 400 when it can't be put back as things are now.",
+        "tags": [
+          "Revisions"
+        ]
+      }
+    },
+    "/projects/{id}/versions": {
+      "get": {
+        "operationId": "ProjectVersions_list",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VersionSummaryDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The project's versions, newest first (without their contents).",
+        "tags": [
+          "ProjectVersions"
+        ]
+      },
+      "post": {
+        "operationId": "ProjectVersions_save",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "\"Save a version now\": the project as it is.",
+        "tags": [
+          "ProjectVersions"
+        ]
+      }
+    },
+    "/versions/{id}": {
+      "get": {
+        "operationId": "Versions_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One version with its contents (to look at it).",
+        "tags": [
+          "Versions"
+        ]
+      },
+      "patch": {
+        "operationId": "Versions_star",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StarVersionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Star a version (or take the star off).",
+        "tags": [
+          "Versions"
+        ]
+      }
+    },
+    "/versions/{id}/copy": {
+      "post": {
+        "operationId": "Versions_copy",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyProjectDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A new project of yours made from this version (named \"<name> (v3)\"); this one is not touched.\nAny member may: they can see the version already, and the copy is theirs.",
+        "tags": [
+          "Versions"
+        ]
+      }
+    },
+    "/versions/{id}/restore": {
+      "post": {
+        "operationId": "Versions_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreVersionResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Put the whole project back as it was in this version (tasks, events, links; the name and\ndescription too for an owner). The state it replaces is kept as a version first; newer\nversions go, except starred and manually saved ones.",
+        "tags": [
+          "Versions"
+        ]
+      }
+    },
+    "/projects/{id}/undo": {
+      "get": {
+        "operationId": "Undo_state",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoStateDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "What Undo and Redo would do now (null: nothing), for the buttons.",
+        "tags": [
+          "Undo"
+        ]
+      },
+      "post": {
+        "operationId": "Undo_undo",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoStepDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Undo your last change here (from any tab or device). 409 when there is none, or when someone\nchanged what it changed since (nothing is overwritten).",
+        "tags": [
+          "Undo"
+        ]
+      }
+    },
+    "/projects/{id}/redo": {
+      "post": {
+        "operationId": "Undo_redo",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoStepDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Redo what your last undo reverted. 409 when there is none, or it no longer fits.",
+        "tags": [
+          "Undo"
+        ]
+      }
     }
   },
   "info": {
@@ -2020,6 +2447,340 @@
             "type": "string"
           }
         }
+      },
+      "RevisionEntity": {
+        "type": "string",
+        "enum": [
+          "project",
+          "task",
+          "event",
+          "link"
+        ]
+      },
+      "RevisionAction": {
+        "type": "string",
+        "enum": [
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      "RevisionAuthorDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "RevisionDto": {
+        "type": "object",
+        "properties": {
+          "entityType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RevisionEntity"
+              }
+            ]
+          },
+          "action": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RevisionAction"
+              }
+            ]
+          },
+          "before": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "description": "The state before (null for a create) and after (null for a delete)."
+          },
+          "after": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "id": {
+            "type": "string"
+          },
+          "entityId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "number",
+            "description": "The entity's own count of changes: 1 for its first."
+          },
+          "summary": {
+            "type": "string",
+            "description": "What changed, in a sentence."
+          },
+          "changedBy": {
+            "nullable": true,
+            "description": "null once that account is deleted.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RevisionAuthorDto"
+              }
+            ]
+          },
+          "batchId": {
+            "type": "string",
+            "description": "The changes of one request share it (an edit that also moved other tasks is one action)."
+          },
+          "primary": {
+            "type": "boolean",
+            "description": "The change the action was about; the others in its batch happened because of it."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entityType",
+          "action",
+          "before",
+          "after",
+          "id",
+          "entityId",
+          "version",
+          "summary",
+          "changedBy",
+          "batchId",
+          "primary",
+          "createdAt"
+        ]
+      },
+      "RestoreResultDto": {
+        "type": "object",
+        "properties": {
+          "entityType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RevisionEntity"
+              }
+            ]
+          },
+          "entityId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "number",
+            "description": "Restored to this version of the entity."
+          },
+          "skipped": {
+            "description": "What could not be brought back (a link to a task that is gone, a group that is gone).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "entityType",
+          "entityId",
+          "version",
+          "skipped"
+        ]
+      },
+      "VersionKind": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "manual",
+          "before-restore"
+        ]
+      },
+      "VersionSummaryDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VersionKind"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "number",
+            "description": "v1, v2, v3... in the project."
+          },
+          "starred": {
+            "type": "boolean"
+          },
+          "createdBy": {
+            "nullable": true,
+            "description": "Who saved it (for auto: whose change it followed); null once that account is deleted.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RevisionAuthorDto"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tasks": {
+            "type": "number",
+            "description": "How many tasks and events it holds."
+          },
+          "events": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "number",
+          "starred",
+          "createdBy",
+          "createdAt",
+          "tasks",
+          "events"
+        ]
+      },
+      "VersionDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VersionKind"
+              }
+            ]
+          },
+          "content": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "number",
+            "description": "v1, v2, v3... in the project."
+          },
+          "starred": {
+            "type": "boolean"
+          },
+          "createdBy": {
+            "nullable": true,
+            "description": "Who saved it (for auto: whose change it followed); null once that account is deleted.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RevisionAuthorDto"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tasks": {
+            "type": "number",
+            "description": "How many tasks and events it holds."
+          },
+          "events": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "content",
+          "id",
+          "number",
+          "starred",
+          "createdBy",
+          "createdAt",
+          "tasks",
+          "events"
+        ]
+      },
+      "StarVersionDto": {
+        "type": "object",
+        "properties": {
+          "starred": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "starred"
+        ]
+      },
+      "RestoreVersionResultDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "description": "The version now on the project."
+          },
+          "savedAs": {
+            "type": "number",
+            "nullable": true,
+            "description": "The version the replaced state was kept as (null: a version already held it)."
+          }
+        },
+        "required": [
+          "version",
+          "savedAs"
+        ]
+      },
+      "UndoStepDto": {
+        "type": "object",
+        "properties": {
+          "batchId": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "batchId",
+          "summary"
+        ]
+      },
+      "UndoStateDto": {
+        "type": "object",
+        "properties": {
+          "undo": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UndoStepDto"
+              }
+            ]
+          },
+          "redo": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UndoStepDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "undo",
+          "redo"
+        ]
       }
     }
   }

@@ -3,7 +3,8 @@ import { isUUID } from 'class-validator';
 // The contract of the live connection (also in docs/realtime.md). The frontend relies on it.
 
 /** What changed. */
-export type RealtimeEntity = 'project' | 'task' | 'dependency' | 'event' | 'member';
+export type RealtimeEntity =
+  'project' | 'task' | 'dependency' | 'event' | 'member' | 'revision' | 'version';
 
 /**
  * How it changed. `resync`: a request failed part-way (5xx) and may have saved some of its work,

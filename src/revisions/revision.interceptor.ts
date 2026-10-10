@@ -1,0 +1,122 @@
+import {
+  type CallHandler,
+  type ExecutionContext,
+  Injectable,
+  Logger,
+  type NestInterceptor,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { from, lastValueFrom, type Observable } from 'rxjs';
+import { DataSource } from 'typeorm';
+import type { AuthedRequest } from '../auth/auth.guard.js';
+import { BROADCAST, type BroadcastOptions } from '../realtime/broadcast.decorator.js';
+import type { Snapshot } from './revision-diff.js';
+import { loadSnapshot } from './revision-state.js';
+import { RevisionsService } from './revisions.service.js';
+import { VersionsService } from './versions.service.js';
+
+/** What a route may add to its revisions (the restore route says what it restored). */
+export interface RevisionRequest extends AuthedRequest {
+  revisionNote?: string;
+  revisionTarget?: string;
+  /** The change is about the whole project (a version restored): no one row, the note on all. */
+  revisionWholeProject?: boolean;
+  /** The request undid or redid another batch (UndoService). */
+  revisionBatch?: { kind: 'undo' | 'redo'; of: string };
+}
+
+/**
+ * Writes the history of every change to a project, its tasks and its events. It acts on the write
+ * routes that tell others of a change (@Broadcast: they all know their project), except members
+ * (not part of the history): it reads the project before the route runs and again after it
+ * succeeded, and records what differs (RevisionsService.record). So a change the route made to
+ * other rows too (a group stretched, a linked task pushed) is in the history as well, with no
+ * route having to remember it.
+ *
+ * Writes to one project run one after another here, so the snapshots of one request never take in
+ * another's changes (one server instance; the same assumption as the live rooms). The history is
+ * written before the answer goes out. Failing to write it never fails the change: it is logged.
+ */
+@Injectable()
+export class RevisionInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(RevisionInterceptor.name);
+  /** The last write queued for each project. */
+  private readonly queues = new Map<string, Promise<unknown>>();
+
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly db: DataSource,
+    private readonly revisions: RevisionsService,
+    private readonly versions: VersionsService,
+  ) {}
+
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const options = this.reflector.get<BroadcastOptions | undefined>(
+      BROADCAST,
+      context.getHandler(),
+    );
+    if (!options || options.entity === 'member' || context.getType() !== 'http') {
+      return next.handle();
+    }
+    const request = context.switchToHttp().getRequest<RevisionRequest>();
+    return from(this.run(options, request, next));
+  }
+
+  private async run(options: BroadcastOptions, request: RevisionRequest, next: CallHandler) {
+    const projectId = await options.project(request, this.db).catch(() => undefined);
+    const handle = () => lastValueFrom(next.handle(), { defaultValue: undefined });
+    if (!projectId) return handle();
+    return this.inTurn(projectId, async () => {
+      const before = await this.snapshot(projectId);
+      const body = await handle();
+      if (before) {
+        const after = await this.snapshot(projectId);
+        if (after) {
+          const target = request.revisionWholeProject
+            ? undefined
+            : (request.revisionTarget ?? text(request.params.id));
+          await this.revisions
+            .record(projectId, before, after, {
+              userId: request.userId ?? null,
+              target,
+              note: request.revisionNote,
+              batch: request.revisionBatch,
+            })
+            .catch((error: unknown) =>
+              this.logger.error(`Could not record the history of ${projectId}`, error as Error),
+            );
+          // And now and then a version of the whole project (VersionsService.autoSave).
+          await this.versions
+            .autoSave(projectId, after, request.userId ?? null)
+            .catch((error: unknown) =>
+              this.logger.error(`Could not save a version of ${projectId}`, error as Error),
+            );
+        }
+      }
+      return body;
+    });
+  }
+
+  private async snapshot(projectId: string): Promise<Snapshot | null> {
+    try {
+      return await loadSnapshot(this.db.manager, projectId);
+    } catch (error) {
+      this.logger.error(`Could not read ${projectId} for its history`, error as Error);
+      return null;
+    }
+  }
+
+  /** Runs `work` after the writes to the same project queued before it (whatever their outcome). */
+  private inTurn<T>(projectId: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.queues.get(projectId) ?? Promise.resolve();
+    const run = previous.then(work, work);
+    const settled = run.catch(() => undefined);
+    this.queues.set(projectId, settled);
+    void settled.then(() => {
+      if (this.queues.get(projectId) === settled) this.queues.delete(projectId);
+    });
+    return run;
+  }
+}
+
+const text = (value: unknown) => (typeof value === 'string' ? value : undefined);
