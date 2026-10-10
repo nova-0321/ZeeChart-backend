@@ -299,7 +299,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Project"
+                  "$ref": "#/components/schemas/MyProjectDto"
                 }
               }
             }
@@ -310,7 +310,7 @@
             "bearer": []
           }
         ],
-        "summary": "A new project, owned by you. No one has it open yet, so no one is told.",
+        "summary": "A new project; you are its first owner. No one has it open yet, so no one is told.",
         "tags": [
           "Projects"
         ]
@@ -326,7 +326,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/Project"
+                    "$ref": "#/components/schemas/MyProjectDto"
                   }
                 }
               }
@@ -338,7 +338,7 @@
             "bearer": []
           }
         ],
-        "summary": "Your projects, newest first.",
+        "summary": "The projects you are a member of, newest first.",
         "tags": [
           "Projects"
         ]
@@ -363,7 +363,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Project"
+                  "$ref": "#/components/schemas/MyProjectDto"
                 }
               }
             }
@@ -406,7 +406,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Project"
+                  "$ref": "#/components/schemas/MyProjectDto"
                 }
               }
             }
@@ -467,7 +467,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Project"
+                  "$ref": "#/components/schemas/MyProjectDto"
                 }
               }
             }
@@ -502,7 +502,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Project"
+                  "$ref": "#/components/schemas/MyProjectDto"
                 }
               }
             }
@@ -515,6 +515,162 @@
         ],
         "tags": [
           "Projects"
+        ]
+      }
+    },
+    "/projects/{id}/members": {
+      "get": {
+        "operationId": "ProjectMembers_list",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The project's members and their roles, in the order they joined.",
+        "tags": [
+          "ProjectMembers"
+        ]
+      },
+      "post": {
+        "operationId": "ProjectMembers_add",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddMemberDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Add someone who has an account, by the email they signed up with (404 when no one has, 409\nwhen they are already a member). An editor unless `role` says otherwise.",
+        "tags": [
+          "ProjectMembers"
+        ]
+      }
+    },
+    "/members/{id}": {
+      "patch": {
+        "operationId": "Members_changeRole",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeRoleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Change a member's role. 409 for the project's last owner.",
+        "tags": [
+          "Members"
+        ]
+      },
+      "delete": {
+        "operationId": "Members_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remove a member from the project. 409 for the project's last owner.",
+        "tags": [
+          "Members"
         ]
       }
     },
@@ -1075,40 +1231,6 @@
           "timestamp"
         ]
       },
-      "User": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "email": {
-            "type": "string"
-          },
-          "passwordHash": {
-            "type": "string",
-            "description": "The scrypt hash (see password.ts). Never selected unless asked for, never sent."
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "email",
-          "passwordHash",
-          "createdAt",
-          "updatedAt"
-        ]
-      },
       "Task": {
         "type": "object",
         "properties": {
@@ -1197,7 +1319,7 @@
           "children"
         ]
       },
-      "Project": {
+      "User": {
         "type": "object",
         "properties": {
           "id": {
@@ -1206,17 +1328,102 @@
           "name": {
             "type": "string"
           },
-          "ownerId": {
-            "type": "string",
-            "description": "Who the project belongs to: the only one who can see or change it (until #18 / #20)."
+          "email": {
+            "type": "string"
           },
-          "owner": {
-            "description": "Every project has an owner; deleting the account deletes its projects.",
+          "passwordHash": {
+            "type": "string",
+            "description": "The scrypt hash (see password.ts). Never selected unless asked for, never sent."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "passwordHash",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "Member": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "project": {
+            "$ref": "#/components/schemas/Project"
+          },
+          "userId": {
+            "type": "string",
+            "description": "Indexed: \"my projects\" looks members up by user."
+          },
+          "user": {
+            "description": "Deleting the account removes it from every project.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/User"
               }
             ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "editor",
+              "viewer"
+            ]
+          },
+          "addedById": {
+            "type": "string",
+            "nullable": true,
+            "description": "Who added them (null for a project's creator, or once that account is deleted)."
+          },
+          "addedBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ]
+          },
+          "joinedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "project",
+          "userId",
+          "user",
+          "role",
+          "addedById",
+          "addedBy",
+          "joinedAt"
+        ]
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
           },
           "description": {
             "type": "string"
@@ -1228,6 +1435,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Task"
+            }
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Member"
             }
           },
           "createdAt": {
@@ -1242,10 +1455,9 @@
         "required": [
           "id",
           "name",
-          "ownerId",
-          "owner",
           "archived",
           "tasks",
+          "members",
           "createdAt",
           "updatedAt"
         ]
@@ -1366,6 +1578,85 @@
           "name"
         ]
       },
+      "MemberRole": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "editor",
+          "viewer"
+        ]
+      },
+      "AddedByDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "MyProjectDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemberRole"
+              }
+            ]
+          },
+          "joinedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "addedBy": {
+            "nullable": true,
+            "description": "null when they made the project (or that account is deleted).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AddedByDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "archived",
+          "createdAt",
+          "updatedAt",
+          "role",
+          "joinedAt",
+          "addedBy"
+        ]
+      },
       "UpdateProjectDto": {
         "type": "object",
         "properties": {
@@ -1379,6 +1670,90 @@
             "type": "boolean"
           }
         }
+      },
+      "MemberDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemberRole"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "addedById": {
+            "type": "string",
+            "nullable": true,
+            "description": "Who added them (null for the project's creator, or once that account is deleted)."
+          },
+          "joinedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "id",
+          "projectId",
+          "userId",
+          "name",
+          "email",
+          "addedById",
+          "joinedAt"
+        ]
+      },
+      "AddMemberDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "description": "Their role; editor when left out.",
+            "default": "editor",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemberRole"
+              }
+            ]
+          },
+          "email": {
+            "type": "string",
+            "description": "The email they signed up with. Trimmed and lower-cased, as on sign-up. (Names are not unique,\nso a member is found by email only.)",
+            "maxLength": 254,
+            "format": "email"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "ChangeRoleDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemberRole"
+              }
+            ]
+          }
+        },
+        "required": [
+          "role"
+        ]
       },
       "TaskDto": {
         "type": "object",

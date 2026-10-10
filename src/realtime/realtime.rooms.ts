@@ -8,3 +8,6 @@ export const clientRoom = (clientId: string) => `client:${clientId}`;
 
 /** The project of a project room (see projectRoom). */
 export const projectOfRoom = (room: string) => room.slice('project:'.length);
+
+/** One room per signed-in user (all their tabs), told about their own memberships. */
+export const userRoom = (userId: string) => `user:${userId}`;

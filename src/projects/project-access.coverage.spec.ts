@@ -1,12 +1,12 @@
 /// <reference types="vite/client" />
 import { RequestMethod } from '@nestjs/common';
 import { GUARDS_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants.js';
-import { NO_PROJECT_CHECK, OWNED_PROJECT, ProjectOwnerGuard } from './project-access.js';
+import { NO_PROJECT_CHECK, PROJECT_ACCESS, ProjectAccessGuard } from './project-access.js';
 
 // Every route outside sign-in, health and the root works on someone's project, so it must say how
-// to find it (@OwnedProject) or that there's nothing to check (@NoProjectCheck), and its
-// controller must run ProjectOwnerGuard. A new route without them fails here, instead of quietly
-// letting anyone at other people's projects.
+// to find it and the role it needs (@ProjectAccess) or that there's nothing to check
+// (@NoProjectCheck), and its controller must run ProjectAccessGuard. A new route without them fails
+// here, instead of quietly letting anyone at other people's projects.
 
 const OPEN_CONTROLLERS = new Set(['auth', 'health', '/', '']);
 
@@ -32,9 +32,9 @@ const routes = () =>
               route: `${RequestMethod[method]} /${base}/${path}`
                 .replace(/\/+$/, '')
                 .replace(/\/\/+/g, '/'),
-              guarded: guards.includes(ProjectOwnerGuard),
+              guarded: guards.includes(ProjectAccessGuard),
               marked:
-                Reflect.hasMetadata(OWNED_PROJECT, handler) ||
+                Reflect.hasMetadata(PROJECT_ACCESS, handler) ||
                 Reflect.hasMetadata(NO_PROJECT_CHECK, handler),
             },
           ];
@@ -44,11 +44,12 @@ const routes = () =>
 
 describe('project access coverage', () => {
   it('finds the project routes', () => {
-    // 22 today: projects 7, tasks 7, dependencies 4, events 4. A new one fails on purpose.
-    expect(routes().length).toBe(22);
+    // 26 today: projects 7, tasks 7, dependencies 4, events 4, members 4. A new one fails on
+    // purpose.
+    expect(routes().length).toBe(26);
   });
 
-  it('every one runs the owner guard and says how to find its project', () => {
+  it('every one runs the access guard and says how to find its project', () => {
     expect(
       routes()
         .filter((r) => !r.guarded || !r.marked)

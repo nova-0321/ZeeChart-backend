@@ -6,8 +6,8 @@ import type { RealtimeAction, RealtimeEntity } from './realtime.types.js';
 // BroadcastInterceptor). Every POST / PATCH / PUT / DELETE route carries @Broadcast or
 // @NoBroadcast; a test fails otherwise, so a new route can't forget it.
 //
-// How a route finds its project is shared with the owner check (projects/project-access.ts): the
-// same locators, so the project a change is announced to is the one whose owner was checked.
+// How a route finds its project is shared with the access check (projects/project-access.ts): the
+// same locators, so the project a change is announced to is the one whose members were checked.
 
 export type { ProjectLocator };
 export { projectInBody, projectInParam, projectOfRow } from '../projects/project-access.js';
