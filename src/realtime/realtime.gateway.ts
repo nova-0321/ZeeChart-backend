@@ -26,6 +26,7 @@ import {
 import {
   clientIdFrom,
   CURSOR_EVENT,
+  type CursorAnchor,
   type CursorMessage,
   PRESENCE_EVENT,
   type PresenceMember,
@@ -50,6 +51,37 @@ interface SocketData {
 
 /** A tab's cursors are passed on at most this often (a busy or broken client can't flood a room). */
 const CURSOR_MIN_MS = 30;
+
+/** A fraction (0..1) and nothing else. */
+const unit = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+/** A key or row id: a short string. */
+const key = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0 && value.length <= 80;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** What a pointer is over (see CursorAnchor), rebuilt field by field: nothing else passes through. */
+const anchor = (value: unknown): CursorAnchor | undefined => {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const at = value as Record<string, unknown>;
+  if (
+    at.k === 't' &&
+    typeof at.day === 'string' &&
+    DAY.test(at.day) &&
+    unit(at.dx) &&
+    unit(at.ry)
+  ) {
+    if (at.row !== null && !key(at.row)) return undefined;
+    return { k: 't', day: at.day, dx: at.dx, row: at.row, ry: at.ry };
+  }
+  if (at.k === 'l' && unit(at.fx) && key(at.row) && unit(at.ry)) {
+    return { k: 'l', fx: at.fx, row: at.row, ry: at.ry };
+  }
+  if (at.k === 'e' && key(at.key) && unit(at.fx) && unit(at.fy)) {
+    return { k: 'e', key: at.key, fx: at.fx, fy: at.fy };
+  }
+  return undefined;
+};
 
 /** A fraction of the board (0..1), or null (hidden); anything else is not a cursor. */
 const fraction = (value: unknown): number | null | undefined =>
@@ -147,7 +179,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   cursor(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): void {
     const data = dataOf(socket);
     if (!data.projectId) return;
-    const input = (body ?? {}) as { x?: unknown; y?: unknown };
+    const input = (body ?? {}) as { x?: unknown; y?: unknown; at?: unknown };
     const [x, y] = [fraction(input.x), fraction(input.y)];
     if (x === undefined || y === undefined || (x === null) !== (y === null)) return;
     const now = Date.now();
@@ -161,6 +193,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       x,
       y,
     };
+    // A malformed anchor is dropped, not the cursor: x and y still place it.
+    const at = x === null ? undefined : anchor(input.at);
+    if (at) message.at = at;
     // volatile: under load a cursor is dropped rather than queued (the next one replaces it).
     socket.volatile.to(projectRoom(data.projectId)).emit(CURSOR_EVENT, message);
   }

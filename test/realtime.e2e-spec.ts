@@ -567,6 +567,34 @@ describe('Realtime (e2e)', () => {
       expect(toBob.at(-1)).toMatchObject({ x: null, y: null });
     });
 
+    it('carries what the pointer is over (checked, rebuilt; a bad one is dropped, not the cursor)', async () => {
+      const id = await project('c4');
+      const [a, b] = [await connect(), await connect()];
+      await a.emitWithAck('join', { projectId: id });
+      await b.emitWithAck('join', { projectId: id });
+      const toB = cursors(b);
+      const wait = () => new Promise((resolve) => setTimeout(resolve, 40));
+      const timeline = { k: 't', day: '2026-10-21', dx: 0.5, row: randomUUID(), ry: 0.25 };
+      a.emit('cursor', { x: 0.5, y: 0.5, at: { ...timeline, extra: 'dropped' } });
+      await wait();
+      a.emit('cursor', { x: 0.5, y: 0.5, at: { k: 'e', key: 'card:add-task', fx: 0.1, fy: 0.9 } });
+      await wait();
+      a.emit('cursor', { x: 0.5, y: 0.5, at: { k: 'l', fx: 0.2, row: 'r1', ry: 0.5 } });
+      await wait();
+      a.emit('cursor', { x: 0.5, y: 0.5, at: { k: 't', day: 'soon', dx: 0.5, row: null, ry: 0 } });
+      await wait();
+      a.emit('cursor', { x: 0.5, y: 0.5, at: { k: 'e', key: 'x'.repeat(200), fx: 0, fy: 0 } });
+      await settle();
+      expect(toB.map((m) => m.at)).toEqual([
+        timeline,
+        { k: 'e', key: 'card:add-task', fx: 0.1, fy: 0.9 },
+        { k: 'l', fx: 0.2, row: 'r1', ry: 0.5 },
+        undefined,
+        undefined,
+      ]);
+      expect(toB.every((m) => m.x === 0.5)).toBe(true);
+    });
+
     it('ignores junk, a tab in no room, and more than one every 30 ms', async () => {
       const id = await project('c3');
       const [a, b, roomless] = [await connect(), await connect(), await connect()];

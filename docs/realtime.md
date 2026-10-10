@@ -96,9 +96,27 @@ one person in two tabs is two entries.
 
 ## Cursors: where the others are pointing
 
-A tab in a project room sends its pointer as `cursor`, `{ x, y }`: fractions (0 to 1) of the board
-area's width and height, or `{ x: null, y: null }` when the pointer leaves it. The others in the room
-get:
+A tab in a project room sends its pointer as `cursor`, `{ x, y, at? }`, or `{ x: null, y: null }`
+when the pointer leaves the board. `at` says what the pointer is over, so another screen (another
+size, zoom, scroll or folded groups) shows it over the same thing; `x` and `y` (fractions 0 to 1 of
+the board area) are the fallback when `at` is missing or can't be found there.
+
+```ts
+type CursorAnchor =
+  | { k: 't'; day: string; dx: number; row: string | null; ry: number } // chart timeline
+  | { k: 'l'; fx: number; row: string; ry: number } // chart task list
+  | { k: 'e'; key: string; fx: number; fy: number }; // an element marked data-cursor-anchor
+```
+
+- `t`: a day (`YYYY-MM-DD`) and how far into it (`dx`), and a row: a task id, or the chart's own
+  ids for the Events lane and the empty rows; `null` over the dates header (then `ry` is how far
+  down the header).
+- `l`: a row of the chart's task list, how far across the list (`fx`) and down the row (`ry`).
+- `e`: a marked element (`card:projects`, `card:add-task`, `card:tasks`, `card:chart`,
+  `chart:toolbar`, `task:<id>` in the task board) and where in it.
+
+All fractions are 0 to 1. A row folded away on the other screen shows on its group's row; a day or
+row scrolled out of view there hides the cursor. The others in the room get:
 
 ```ts
 interface CursorMessage {
@@ -108,8 +126,12 @@ interface CursorMessage {
   name: string;
   x: number | null; // null: hidden
   y: number | null;
+  at?: CursorAnchor;
 }
 ```
+
+The server rebuilds `at` field by field (nothing else passes through) and drops a malformed one,
+not the cursor.
 
 Never sent back to the sender, nor outside the room. The server adds who it is (a tab can't send
 someone else's name), drops malformed ones and more than one every 30 ms per tab (a hide always goes

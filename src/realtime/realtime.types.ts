@@ -60,14 +60,32 @@ export interface PresenceMessage {
 export const PRESENCE_EVENT = 'presence';
 
 /**
+ * What the pointer is over, so another screen (another size, zoom, scroll, folded groups) shows it
+ * over the same thing, not just at the same place of the layout:
+ * - `t`: the chart's timeline: a day (and how far into it) and a row (a task id, or the chart's own
+ *   row ids for the Events row and the empty rows; null over the dates header, then `ry` is how far
+ *   down the header);
+ * - `l`: the chart's task list: a row, and how far across the list;
+ * - `e`: an element of the page marked with a key (a card, a task in the task board), and where
+ *   in it.
+ * All fractions are 0..1. The server only checks the shape and passes it on.
+ */
+export type CursorAnchor =
+  | { k: 't'; day: string; dx: number; row: string | null; ry: number }
+  | { k: 'l'; fx: number; row: string; ry: number }
+  | { k: 'e'; key: string; fx: number; fy: number };
+
+/**
  * Where a tab's pointer is on the board (sent as `cursor` by the tab, about 20 times a second at
- * most). `x` and `y` are fractions (0..1) of the board area's width and height, so screens of
- * different sizes show it in the same place; null: the pointer left the board. The server adds who
- * it is and passes it to the others in the tab's project room (never back to the sender).
+ * most). `x` and `y` are fractions (0..1) of the board area's width and height: the fallback when
+ * `at` (what it is over) can't be found on the other screen; null: the pointer left the board. The
+ * server adds who it is and passes it to the others in the tab's project room (never back to the
+ * sender).
  */
 export interface CursorInput {
   x: number | null;
   y: number | null;
+  at?: CursorAnchor;
 }
 
 export interface CursorMessage {
@@ -79,6 +97,8 @@ export interface CursorMessage {
   /** null: hidden. */
   x: number | null;
   y: number | null;
+  /** What it is over (absent: only x and y are known). */
+  at?: CursorAnchor;
 }
 
 /** The socket.io event name of a cursor, both ways. */
