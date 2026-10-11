@@ -1,18 +1,16 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
-import { Like, type Repository } from 'typeorm';
 import { AppModule } from '../src/app.module.js';
-import { User } from '../src/auth/entities/user.entity.js';
+import { deleteTestAccounts } from './cleanup.js';
 
-// Every project has an owner, and only the owner sees or changes it and everything in it. To
-// anyone else it does not exist (404, the same answer as for a made-up id).
+// Every project has an owner, and only its members see it and everything in it. To anyone else it
+// does not exist (404, the same answer as for a made-up id). Roles inside a project are in
+// members.e2e-spec.ts.
 
 describe('Project ownership (e2e)', () => {
   let app: INestApplication;
-  let users: Repository<User>;
   const http = () => request(app.getHttpServer());
   let ada: string; // tokens
   let bob: string;
@@ -37,14 +35,12 @@ describe('Project ownership (e2e)', () => {
     // Listening on a port of its own: supertest then reuses it, instead of opening and closing a
     // temporary one for every request (which can refuse a request sent right after another).
     await app.listen(0);
-    users = app.get(getRepositoryToken(User));
     ada = await signUp('Ada');
     bob = await signUp('Bob');
   });
 
-  // Deleting the accounts deletes their projects (and all in them) by cascade.
   afterAll(async () => {
-    await users.delete({ email: Like('zzown-%') });
+    await deleteTestAccounts(app, 'zzown-');
     await app.close();
   });
 
@@ -54,7 +50,7 @@ describe('Project ownership (e2e)', () => {
       await as(ada, http().post('/projects'))
         .send({ name: `Launch ${randomUUID()}` })
         .expect(201)
-    ).body as { id: string; ownerId: string };
+    ).body as { id: string; role: string };
     const task = (body: object) =>
       as(ada, http().post('/tasks'))
         .send({
@@ -101,14 +97,21 @@ describe('Project ownership (e2e)', () => {
     for (const call of calls) await call().expect(401);
   });
 
-  it('a new project belongs to its creator, and lists are per owner', async () => {
+  it('a new project belongs to its creator, and lists are per member', async () => {
     const { project } = await adasProject();
     const adaList = (await as(ada, http().get('/projects')).expect(200)).body as { id: string }[];
     const bobList = (await as(bob, http().get('/projects')).expect(200)).body as { id: string }[];
     expect(adaList.map((p) => p.id)).toContain(project.id);
     expect(bobList.map((p) => p.id)).not.toContain(project.id);
+    expect(project.role).toBe('owner');
+    expect(adaList.find((p) => p.id === project.id)).toMatchObject({
+      role: 'owner',
+      addedBy: null,
+    });
+    const members = (await as(ada, http().get(`/projects/${project.id}/members`)).expect(200))
+      .body as { userId: string; role: string }[];
     const me = (await as(ada, http().get('/auth/me')).expect(200)).body as { id: string };
-    expect(project.ownerId).toBe(me.id);
+    expect(members.map((m) => [m.userId, m.role])).toEqual([[me.id, 'owner']]);
   });
 
   it("someone else's project, and everything in it, is a 404 for every route", async () => {
@@ -167,6 +170,12 @@ describe('Project ownership (e2e)', () => {
       ],
       ['edit an event', () => as(bob, http().patch(`/events/${event.id}`)).send({ name: 'x' })],
       ['delete an event', () => as(bob, http().delete(`/events/${event.id}`))],
+      ['list members', () => as(bob, http().get(`/projects/${project.id}/members`))],
+      [
+        'add a member',
+        () =>
+          as(bob, http().post(`/projects/${project.id}/members`)).send({ email: 'x@example.com' }),
+      ],
     ];
     const answers: string[] = [];
     for (const [label, call] of tries) answers.push(`${label}: ${(await call()).status}`);
@@ -221,11 +230,33 @@ describe('Project ownership (e2e)', () => {
     await as(ada, http().get(`/projects/${project.id}`)).expect(404);
   });
 
-  it('names are unique per owner, not across everyone', async () => {
+  it('names are unique among your projects, not across everyone', async () => {
     const name = `Shared name ${randomUUID()}`;
-    await as(ada, http().post('/projects')).send({ name }).expect(201);
+    const first = (await as(ada, http().post('/projects')).send({ name }).expect(201)).body as {
+      id: string;
+    };
     await as(bob, http().post('/projects')).send({ name }).expect(201);
     await as(ada, http().post('/projects')).send({ name }).expect(409);
+    // Renaming into a name you have is refused too; keeping your own name is not a clash.
+    const other = (
+      await as(ada, http().post('/projects'))
+        .send({ name: `Other ${randomUUID()}` })
+        .expect(201)
+    ).body as { id: string };
+    await as(ada, http().patch(`/projects/${other.id}`))
+      .send({ name })
+      .expect(409);
+    await as(ada, http().patch(`/projects/${first.id}`))
+      .send({ name })
+      .expect(200);
+  });
+
+  it('two projects of the same name made at once: one of them is refused', async () => {
+    const name = `Race ${randomUUID()}`;
+    const answers = await Promise.all(
+      [1, 2, 3].map(() => as(ada, http().post('/projects')).send({ name })),
+    );
+    expect(answers.map((r) => r.status).sort()).toEqual([201, 409, 409]);
   });
 
   it('a malformed id is still a 400 (the route answers it), for the owner and for others', async () => {

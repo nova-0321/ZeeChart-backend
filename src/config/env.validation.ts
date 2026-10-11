@@ -11,6 +11,10 @@ export const envValidationSchema = Joi.object({
   DB_PASSWORD: Joi.string().required(),
   DB_NAME: Joi.string().required(),
   DB_LOGGING: Joi.boolean().default(false),
+  // SSL to the database: false (local), true (a managed host: Neon, Railway…; the certificate is
+  // checked), or no-verify (encrypted, certificate not checked: a host whose certificate isn't
+  // publicly trusted, e.g. Supabase's pooler).
+  DB_SSL: Joi.string().valid('false', 'true', 'no-verify').default('false'),
 
   // Signs the sign-in tokens. Required (32+ characters) in production; elsewhere a fixed
   // development value is used when unset, so a fresh checkout (and CI) still starts. Changing it

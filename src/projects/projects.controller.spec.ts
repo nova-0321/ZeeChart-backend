@@ -1,7 +1,7 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { AuthGuard } from '../auth/auth.guard.js';
-import { ProjectOwnerGuard } from './project-access.js';
+import { ProjectAccessGuard } from './project-access.js';
 import { ProjectsController } from './projects.controller.js';
 import { ProjectsService } from './projects.service.js';
 
@@ -21,10 +21,11 @@ describe('ProjectsController', () => {
       // The controller only delegates; the service has its own spec.
       providers: [{ provide: ProjectsService, useValue: service }],
     })
-      // Sign-in and ownership are tested end to end (test/ownership.e2e-spec.ts).
+      // Sign-in, membership and roles are tested end to end (test/ownership.e2e-spec.ts,
+      // test/members.e2e-spec.ts).
       .overrideGuard(AuthGuard)
       .useValue({ canActivate: () => true })
-      .overrideGuard(ProjectOwnerGuard)
+      .overrideGuard(ProjectAccessGuard)
       .useValue({ canActivate: () => true })
       .compile();
 
@@ -39,10 +40,10 @@ describe('ProjectsController', () => {
     service.archive.mockResolvedValue({ id: 'p1', archived: true });
     service.reopen.mockResolvedValue({ id: 'p1', archived: false });
 
-    await expect(controller.archive('p1')).resolves.toMatchObject({ archived: true });
-    await expect(controller.reopen('p1')).resolves.toMatchObject({ archived: false });
-    expect(service.archive).toHaveBeenCalledWith('p1');
-    expect(service.reopen).toHaveBeenCalledWith('p1');
+    await expect(controller.archive('p1', 'user-1')).resolves.toMatchObject({ archived: true });
+    await expect(controller.reopen('p1', 'user-1')).resolves.toMatchObject({ archived: false });
+    expect(service.archive).toHaveBeenCalledWith('p1', 'user-1');
+    expect(service.reopen).toHaveBeenCalledWith('p1', 'user-1');
   });
 
   it('a new project belongs to whoever creates it, and the list is theirs only', async () => {

@@ -5,14 +5,19 @@ import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { io, type Socket } from 'socket.io-client';
 import request from 'supertest';
-import { Like, type Repository } from 'typeorm';
+import type { Repository } from 'typeorm';
 import { AppModule } from '../src/app.module.js';
-import { User } from '../src/auth/entities/user.entity.js';
+import { deleteTestAccounts } from './cleanup.js';
+import { Member } from '../src/members/entities/member.entity.js';
 import { Project } from '../src/projects/entities/project.entity.js';
 import { RealtimeGateway } from '../src/realtime/realtime.gateway.js';
 import { clientRoom, projectRoom } from '../src/realtime/realtime.rooms.js';
 import { RealtimeService } from '../src/realtime/realtime.service.js';
-import type { ChangeMessage, PresenceMessage } from '../src/realtime/realtime.types.js';
+import type {
+  ChangeMessage,
+  CursorMessage,
+  PresenceMessage,
+} from '../src/realtime/realtime.types.js';
 import { TaskService } from '../src/tasks/task.service.js';
 import { ConfiguredIoAdapter } from '../src/realtime/socket-io.adapter.js';
 
@@ -26,29 +31,51 @@ describe('Realtime (e2e)', () => {
   let realtime: RealtimeService;
   const sockets: Socket[] = [];
   const made: string[] = [];
-  // The projects belong to one account, and the REST calls are made as it (only an owner may
-  // change a project; see projects/project-access.ts).
-  let users: Repository<User>;
-  let ownerId: string;
+  // The projects belong to one account, and the sockets and REST calls are made as it (only a
+  // member may join a project's room, only an owner may change a project; see
+  // projects/project-access.ts).
   let ownerToken: string;
 
-  const connect = async (clientId?: unknown) => {
+  /** A socket signed in as `token` (the owner unless told otherwise; null: no token at all). */
+  const open = (clientId?: unknown, token: string | null = ownerToken) => {
     const socket = io(url, {
       transports: ['websocket'],
       forceNew: true,
-      auth: clientId === undefined ? {} : { clientId },
+      auth: {
+        ...(clientId === undefined ? {} : { clientId }),
+        ...(token === null ? {} : { token }),
+      },
     });
     sockets.push(socket);
+    return socket;
+  };
+  const connect = async (clientId?: unknown, token?: string | null) => {
+    const socket = open(clientId, token);
     await new Promise<void>((resolve, reject) => {
       socket.once('connect', resolve);
       socket.once('connect_error', reject);
     });
     return socket;
   };
+  /** Someone else, signed up for a test: their token and id. */
+  const someone = async (name: string) => {
+    const body = (
+      await request(app.getHttpServer())
+        .post('/auth/signup')
+        .send({ name, email: `zzrt-${randomUUID()}@example.com`, password: 'pass-word-1' })
+        .expect(201)
+    ).body as { accessToken: string; user: { id: string; email: string } };
+    return { token: body.accessToken, id: body.user.id, email: body.user.email };
+  };
+  /** A project of the owner's, made the way the app makes one (so they are its owner member). */
   const project = async (name: string) => {
-    const saved = await projects.save(
-      projects.create({ name: `zzrt-${name}-${Date.now()}`, ownerId }),
-    );
+    const saved = (
+      await request(app.getHttpServer())
+        .post('/projects')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: `zzrt-${name}-${randomUUID()}` })
+        .expect(201)
+    ).body as { id: string };
     made.push(saved.id);
     return saved.id;
   };
@@ -74,7 +101,6 @@ describe('Realtime (e2e)', () => {
     projects = app.get(getRepositoryToken(Project));
     gateway = app.get(RealtimeGateway);
     realtime = app.get(RealtimeService);
-    users = app.get(getRepositoryToken(User));
     const signedUp = (
       await request(app.getHttpServer())
         .post('/auth/signup')
@@ -82,7 +108,6 @@ describe('Realtime (e2e)', () => {
         .expect(201)
     ).body as { accessToken: string; user: { id: string } };
     ownerToken = signedUp.accessToken;
-    ownerId = signedUp.user.id;
   });
 
   afterEach(() => {
@@ -91,9 +116,18 @@ describe('Realtime (e2e)', () => {
 
   afterAll(async () => {
     if (made.length) await projects.delete(made);
-    // The account goes too (and any project of it still there, by cascade).
-    await users.delete({ email: Like('zzrt-%') });
+    // The accounts go too, with any project of theirs still there.
+    await deleteTestAccounts(app, 'zzrt-');
     await app.close();
+  });
+
+  it('refuses a socket without a valid token, with the same message as the REST API', async () => {
+    const refusal = (socket: Socket) =>
+      new Promise<string>((resolve) => socket.once('connect_error', (e) => resolve(e.message)));
+    await expect(refusal(open(undefined, null))).resolves.toBe('Sign in first');
+    await expect(refusal(open(undefined, 'junk'))).resolves.toBe(
+      'Your session has ended. Sign in again',
+    );
   });
 
   it('joins the room of an existing project', async () => {
@@ -119,9 +153,20 @@ describe('Realtime (e2e)', () => {
     expect(await inRoom(unknown)).toEqual([]);
   });
 
+  it("someone else's project can't be joined: it looks like one that doesn't exist", async () => {
+    const id = await project('x');
+    const stranger = await connect(undefined, (await someone('Stranger')).token);
+    await expect(stranger.emitWithAck('join', { projectId: id })).resolves.toEqual({
+      ok: false,
+      error: `Project ${id} not found`,
+    });
+    expect(await inRoom(id)).toEqual([]);
+  });
+
   it('a join still answers when the database check fails', async () => {
     const socket = await connect();
-    const spy = vi.spyOn(projects, 'existsBy').mockRejectedValueOnce(new Error('db down'));
+    const members = app.get<Repository<Member>>(getRepositoryToken(Member));
+    const spy = vi.spyOn(members, 'findOne').mockRejectedValueOnce(new Error('db down'));
     await expect(socket.emitWithAck('join', { projectId: randomUUID() })).resolves.toEqual({
       ok: false,
       error: 'Could not check the project. Try again.',
@@ -429,11 +474,163 @@ describe('Realtime (e2e)', () => {
     });
   });
 
+  describe('members', () => {
+    const http = () =>
+      request.agent(app.getHttpServer()).set('Authorization', `Bearer ${ownerToken}`);
+
+    it('someone added is told in every tab, even with no project open', async () => {
+      const projectId = await project('mb1');
+      const bob = await someone('Bob');
+      const [tab1, tab2] = [
+        await connect(randomUUID(), bob.token),
+        await connect(randomUUID(), bob.token),
+      ];
+      const [got1, got2] = [inbox(tab1), inbox(tab2)];
+      const member = (
+        await http().post(`/projects/${projectId}/members`).send({ email: bob.email }).expect(201)
+      ).body as { id: string };
+      await settle();
+      const added = { projectId, entity: 'member', action: 'create', id: member.id };
+      expect(got1).toEqual([added]);
+      expect(got2).toEqual([added]);
+      // Now a member: the room opens to them.
+      await expect(tab1.emitWithAck('join', { projectId })).resolves.toEqual({ ok: true });
+    });
+
+    it('someone removed leaves the room at once and hears nothing more of the project', async () => {
+      const projectId = await project('mb2');
+      const bob = await someone('Bob');
+      const member = (
+        await http().post(`/projects/${projectId}/members`).send({ email: bob.email }).expect(201)
+      ).body as { id: string };
+      const ownerTab = await connect(randomUUID());
+      const bobTab = await connect(randomUUID(), bob.token);
+      await ownerTab.emitWithAck('join', { projectId });
+      await bobTab.emitWithAck('join', { projectId });
+      const [toOwner, toBob] = [inbox(ownerTab), inbox(bobTab)];
+      await http().delete(`/members/${member.id}`).expect(204);
+      await settle();
+      const removed = { projectId, entity: 'member', action: 'delete', id: member.id };
+      expect(toBob).toEqual([removed]);
+      expect(toOwner).toEqual([removed]);
+      expect(await inRoom(projectId)).toEqual([ownerTab.id]);
+      // A later change in the project doesn't reach them, and they can't join again.
+      realtime.notify({ projectId, entity: 'task', action: 'update', id: randomUUID() });
+      await settle();
+      expect(toBob).toEqual([removed]);
+      await expect(bobTab.emitWithAck('join', { projectId })).resolves.toMatchObject({ ok: false });
+    });
+  });
+
+  describe('cursors', () => {
+    /** Every cursor a socket gets from now on. */
+    const cursors = (socket: Socket) => {
+      const got: CursorMessage[] = [];
+      socket.on('cursor', (message: CursorMessage) => got.push(message));
+      return got;
+    };
+
+    it('reach the others in the room, with who it is; never the sender or another room', async () => {
+      const [here, elsewhere] = [await project('c1'), await project('c2')];
+      const bob = await someone('Bob');
+      await request(app.getHttpServer())
+        .post(`/projects/${here}/members`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ email: bob.email })
+        .expect(201);
+      const ownerTab = randomUUID();
+      const owner = await connect(ownerTab);
+      const viewer = await connect(randomUUID(), bob.token);
+      const away = await connect(randomUUID());
+      await owner.emitWithAck('join', { projectId: here });
+      await viewer.emitWithAck('join', { projectId: here });
+      await away.emitWithAck('join', { projectId: elsewhere });
+      const [toOwner, toBob, toAway] = [cursors(owner), cursors(viewer), cursors(away)];
+      owner.emit('cursor', { x: 0.25, y: 0.5 });
+      await settle();
+      expect(toBob).toEqual([
+        {
+          projectId: here,
+          id: ownerTab,
+          userId: expect.any(String),
+          name: 'Owner',
+          x: 0.25,
+          y: 0.5,
+        },
+      ]);
+      expect(toOwner).toEqual([]);
+      expect(toAway).toEqual([]);
+      // Hidden.
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      owner.emit('cursor', { x: null, y: null });
+      await settle();
+      expect(toBob.at(-1)).toMatchObject({ x: null, y: null });
+    });
+
+    it('carries what the pointer is over (checked, rebuilt; a bad one is dropped, not the cursor)', async () => {
+      const id = await project('c4');
+      const [a, b] = [await connect(), await connect()];
+      await a.emitWithAck('join', { projectId: id });
+      await b.emitWithAck('join', { projectId: id });
+      const toB = cursors(b);
+      const wait = () => new Promise((resolve) => setTimeout(resolve, 40));
+      const timeline = { k: 't', day: '2026-10-21', dx: 0.5, row: randomUUID(), ry: 0.25 };
+      a.emit('cursor', { x: 0.5, y: 0.5, at: { ...timeline, extra: 'dropped' } });
+      await wait();
+      a.emit('cursor', { x: 0.5, y: 0.5, at: { k: 'e', key: 'card:add-task', fx: 0.1, fy: 0.9 } });
+      await wait();
+      a.emit('cursor', { x: 0.5, y: 0.5, at: { k: 'l', fx: 0.2, row: 'r1', ry: 0.5 } });
+      await wait();
+      a.emit('cursor', { x: 0.5, y: 0.5, at: { k: 't', day: 'soon', dx: 0.5, row: null, ry: 0 } });
+      await wait();
+      a.emit('cursor', { x: 0.5, y: 0.5, at: { k: 'e', key: 'x'.repeat(200), fx: 0, fy: 0 } });
+      await settle();
+      expect(toB.map((m) => m.at)).toEqual([
+        timeline,
+        { k: 'e', key: 'card:add-task', fx: 0.1, fy: 0.9 },
+        { k: 'l', fx: 0.2, row: 'r1', ry: 0.5 },
+        undefined,
+        undefined,
+      ]);
+      expect(toB.every((m) => m.x === 0.5)).toBe(true);
+    });
+
+    it('ignores junk, a tab in no room, and more than one every 30 ms', async () => {
+      const id = await project('c3');
+      const [a, b, roomless] = [await connect(), await connect(), await connect()];
+      await a.emitWithAck('join', { projectId: id });
+      await b.emitWithAck('join', { projectId: id });
+      const toB = cursors(b);
+      for (const junk of [
+        null,
+        'x',
+        { x: 2, y: 0.5 },
+        { x: -0.1, y: 0 },
+        { x: 0.5 },
+        { x: null, y: 0.5 },
+        { x: '0.5', y: 0.5 },
+      ])
+        a.emit('cursor', junk);
+      roomless.emit('cursor', { x: 0.5, y: 0.5 });
+      await settle();
+      expect(toB).toEqual([]);
+      for (let k = 0; k < 5; k++) a.emit('cursor', { x: 0.1 * k, y: 0.1 });
+      await settle();
+      expect(toB.length).toBeLessThanOrEqual(2);
+      expect(toB[0]).toMatchObject({ x: 0, y: 0.1 });
+    });
+  });
+
   describe('presence', () => {
     /** The latest presence message a socket got, from now on. */
     const presence = (socket: Socket) => {
-      const seen: { last?: PresenceMessage } = {};
-      socket.on('presence', (message: PresenceMessage) => (seen.last = message));
+      const seen: { last?: { projectId: string; members: string[] } } = {};
+      // Tab ids only (the names are checked on their own).
+      socket.on(
+        'presence',
+        (message: PresenceMessage) =>
+          (seen.last = { projectId: message.projectId, members: message.members.map((m) => m.id) }),
+      );
       return seen;
     };
 
@@ -488,6 +685,28 @@ describe('Realtime (e2e)', () => {
       for (const s of [first, second, plain]) await s.emitWithAck('join', { projectId: id });
       await settle();
       expect(seen.last?.members).toEqual([tabId, `guest:${plain.id}`]);
+    });
+
+    it('each tab comes with who is signed in there (id and name)', async () => {
+      const id = await project('pr6');
+      const bob = await someone('Bob');
+      await request(app.getHttpServer())
+        .post(`/projects/${id}/members`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ email: bob.email })
+        .expect(201);
+      const [ownerTab, bobTab] = [randomUUID(), randomUUID()];
+      const a = await connect(ownerTab);
+      const b = await connect(bobTab, bob.token);
+      let last: PresenceMessage | undefined;
+      a.on('presence', (message: PresenceMessage) => (last = message));
+      await a.emitWithAck('join', { projectId: id });
+      await b.emitWithAck('join', { projectId: id });
+      await settle();
+      expect(last?.members).toEqual([
+        { id: ownerTab, userId: expect.any(String), name: 'Owner' },
+        { id: bobTab, userId: bob.id, name: 'Bob' },
+      ]);
     });
 
     it('a refused join announces nothing', async () => {

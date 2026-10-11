@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { HttpLoggerMiddleware } from './common/http-logger.middleware.js';
 import { EventsModule } from './events/events.module.js';
 import { HealthModule } from './health/health.module.js';
+import { MembersModule } from './members/members.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { TaskModule } from './tasks/task.module.js';
@@ -28,6 +29,7 @@ import { DatabaseModule } from './database/database.module.js';
     HealthModule,
     EventsModule,
     ProjectsModule,
+    MembersModule,
     TaskModule,
     DependenciesModule,
     RealtimeModule,

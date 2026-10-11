@@ -19,4 +19,12 @@ export const buildDataSourceOptions = (get: Getter): DataSourceOptions => ({
   migrations: [__dirname + '/migrations/*.{ts,js}'],
   synchronize: false,
   logging: get('DB_LOGGING') === 'true',
+  ssl: sslOf(get('DB_SSL')),
 });
+
+/** DB_SSL (see env.validation.ts): off, on with the certificate checked, or on without. */
+const sslOf = (value: string | undefined): boolean | { rejectUnauthorized: boolean } => {
+  if (value === 'true') return true;
+  if (value === 'no-verify') return { rejectUnauthorized: false };
+  return false;
+};

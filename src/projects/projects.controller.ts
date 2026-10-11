@@ -17,23 +17,24 @@ import { CreateProjectDto } from './dto/create-project.dto.js';
 import { UpdateProjectDto } from './dto/update-project.dto.js';
 import {
   NoProjectCheck,
-  OwnedProject,
+  ProjectAccess,
   projectInParam,
-  ProjectOwnerGuard,
+  ProjectAccessGuard,
 } from './project-access.js';
 import { ProjectsService } from './projects.service.js';
 
 /**
- * Your projects: only the signed-in owner sees or changes one (404 for anyone else). Changes are
- * told to everyone with the project open (@Broadcast).
+ * Your projects: the ones you are a member of, each with your role in it. Only members see one
+ * (404 for anyone else) and only its owners change it. Changes are told to everyone with the
+ * project open (@Broadcast).
  */
 @Controller('projects')
-@UseGuards(AuthGuard, ProjectOwnerGuard)
+@UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
-  /** A new project, owned by you. No one has it open yet, so no one is told. */
+  /** A new project; you are its first owner. No one has it open yet, so no one is told. */
   @Post()
   @NoProjectCheck('it becomes yours')
   @NoBroadcast('a new project has no one in its room')
@@ -41,7 +42,7 @@ export class ProjectsController {
     return this.projectsService.create(createProjectDto, userId);
   }
 
-  /** Your projects, newest first. */
+  /** The projects you are a member of, newest first. */
   @Get()
   @NoProjectCheck('lists only your own')
   findAll(@CurrentUser() userId: string) {
@@ -49,35 +50,39 @@ export class ProjectsController {
   }
 
   @Get(':id')
-  @OwnedProject(projectInParam())
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.projectsService.findOne(id);
+  @ProjectAccess('viewer', projectInParam())
+  findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() userId: string) {
+    return this.projectsService.findOne(id, userId);
   }
 
   @Patch(':id')
-  @OwnedProject(projectInParam())
+  @ProjectAccess('owner', projectInParam())
   @Broadcast({ entity: 'project', action: 'update', project: projectInParam() })
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() updateProjectDto: UpdateProjectDto) {
-    return this.projectsService.update(id, updateProjectDto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateProjectDto: UpdateProjectDto,
+    @CurrentUser() userId: string,
+  ) {
+    return this.projectsService.update(id, updateProjectDto, userId);
   }
 
   @Patch(':id/archive')
-  @OwnedProject(projectInParam())
+  @ProjectAccess('owner', projectInParam())
   @Broadcast({ entity: 'project', action: 'update', project: projectInParam() })
-  archive(@Param('id', ParseUUIDPipe) id: string) {
-    return this.projectsService.archive(id);
+  archive(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() userId: string) {
+    return this.projectsService.archive(id, userId);
   }
 
   @Patch(':id/reopen')
-  @OwnedProject(projectInParam())
+  @ProjectAccess('owner', projectInParam())
   @Broadcast({ entity: 'project', action: 'update', project: projectInParam() })
-  reopen(@Param('id', ParseUUIDPipe) id: string) {
-    return this.projectsService.reopen(id);
+  reopen(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() userId: string) {
+    return this.projectsService.reopen(id, userId);
   }
 
   // Tells whoever has it open, so they can move off it.
   @Delete(':id')
-  @OwnedProject(projectInParam())
+  @ProjectAccess('owner', projectInParam())
   @Broadcast({ entity: 'project', action: 'delete', project: projectInParam() })
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.projectsService.remove(id);

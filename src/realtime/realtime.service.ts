@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RealtimeGateway } from './realtime.gateway.js';
-import { clientRoom, projectRoom } from './realtime.rooms.js';
+import { clientRoom, projectRoom, userRoom } from './realtime.rooms.js';
 import { CHANGED_EVENT, clientIdFrom, type ChangeMessage } from './realtime.types.js';
 
 /** The only place that sends change messages. */
@@ -25,6 +25,33 @@ export class RealtimeService {
       (except ? room.except(clientRoom(except)) : room).emit(CHANGED_EVENT, message);
     } catch (error) {
       this.logger.error(`Could not send ${JSON.stringify(message)}`, error as Error);
+    }
+  }
+
+  /**
+   * Tell every tab of one person about a change to their own membership, whatever project they
+   * have open (they were added to a project they aren't in yet, or removed from one). Never throws.
+   */
+  notifyUser(userId: string, message: ChangeMessage): void {
+    const server = this.gateway.server;
+    if (!server) return;
+    try {
+      server.to(userRoom(userId)).emit(CHANGED_EVENT, message);
+    } catch (error) {
+      this.logger.error(`Could not send ${JSON.stringify(message)} to ${userId}`, error as Error);
+    }
+  }
+
+  /**
+   * Someone is no longer a member: their tabs leave the project's room (they hear nothing more
+   * about it) and the others there are told who is left. Never throws.
+   */
+  async removeFromProject(userId: string, projectId: string): Promise<void> {
+    if (!this.gateway.server) return;
+    try {
+      await this.gateway.removeUser(userId, projectId);
+    } catch (error) {
+      this.logger.error(`Could not take ${userId} out of ${projectId}`, error as Error);
     }
   }
 }
