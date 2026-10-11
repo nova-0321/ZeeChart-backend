@@ -497,6 +497,30 @@ describe('Realtime (e2e)', () => {
       await expect(tab1.emitWithAck('join', { projectId })).resolves.toEqual({ ok: true });
     });
 
+    it("a request can't keep someone else's tab from hearing of it (their tab id in X-Client-Id)", async () => {
+      const projectId = await project('mb0');
+      const bob = await someone('Bob');
+      await http().post(`/projects/${projectId}/members`).send({ email: bob.email }).expect(201);
+      const bobTabId = randomUUID();
+      const bobTab = await connect(bobTabId, bob.token);
+      await bobTab.emitWithAck('join', { projectId });
+      const toBob = inbox(bobTab);
+      // The owner sends Bob's tab id (seen in presence) as if it were theirs.
+      await http()
+        .post('/tasks')
+        .set('X-Client-Id', bobTabId)
+        .send({
+          projectId,
+          name: 'Sneaky',
+          color: '#2a78d6',
+          startDate: '2026-11-02',
+          endDate: '2026-11-03',
+        })
+        .expect(201);
+      await settle();
+      expect(toBob.map((m) => [m.entity, m.action])).toEqual([['task', 'create']]);
+    });
+
     it('someone removed leaves the room at once and hears nothing more of the project', async () => {
       const projectId = await project('mb2');
       const bob = await someone('Bob');

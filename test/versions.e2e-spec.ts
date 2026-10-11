@@ -93,7 +93,7 @@ describe('Versions (e2e)', () => {
       [projectId],
     );
 
-  it('a new project has v1; changes soon after add none; "Save a version now" does', async () => {
+  it('a new project has v1; its first change is kept at once (v2), the next soon after are not; "Save a version now"', async () => {
     const { owner, projectId } = await setUp();
     expect(await versions(owner, projectId)).toEqual([
       expect.objectContaining({
@@ -105,11 +105,14 @@ describe('Versions (e2e)', () => {
     ]);
     await newTask(owner, projectId, { name: 'A' });
     await newTask(owner, projectId, { name: 'B' });
-    expect((await versions(owner, projectId)).length).toBe(1);
+    expect((await versions(owner, projectId)).map((v) => [v.number, v.tasks])).toEqual([
+      [2, 1],
+      [1, 0],
+    ]);
     const saved = (await as(owner, http().post(`/projects/${projectId}/versions`)).expect(201))
       .body as VersionSummary;
-    expect(saved).toMatchObject({ number: 2, kind: 'manual', tasks: 2 });
-    expect((await versions(owner, projectId)).map((v) => v.number)).toEqual([2, 1]);
+    expect(saved).toMatchObject({ number: 3, kind: 'manual', tasks: 2 });
+    expect((await versions(owner, projectId)).map((v) => v.number)).toEqual([3, 2, 1]);
   });
 
   it('an auto version after a change, when the last one is older than 10 minutes; one, not two', async () => {
@@ -192,15 +195,19 @@ describe('Versions (e2e)', () => {
 
   it('the state a restore replaces is kept as a version (before-restore) when no version has it', async () => {
     const { owner, projectId } = await setUp();
+    await newTask(owner, projectId, { name: 'Saved' }); // v2 (a new project's first change)
     await newTask(owner, projectId, { name: 'Unsaved work' });
     const v1 = (await versions(owner, projectId)).find((v) => v.number === 1)!;
     const result = (await as(owner, http().post(`/versions/${v1.id}/restore`)).expect(201))
       .body as { savedAs: number | null };
-    expect(result.savedAs).toBe(2);
+    expect(result.savedAs).toBe(3);
     const list = await versions(owner, projectId);
-    expect(list[0]).toMatchObject({ number: 2, kind: 'before-restore', tasks: 1 });
+    expect(list[0]).toMatchObject({ number: 3, kind: 'before-restore', tasks: 2 });
     await as(owner, http().post(`/versions/${list[0]!.id}/restore`)).expect(201);
-    expect((await tasksOf(owner, projectId)).map((t) => t.name)).toEqual(['Unsaved work']);
+    expect((await tasksOf(owner, projectId)).map((t) => t.name).sort()).toEqual([
+      'Saved',
+      'Unsaved work',
+    ]);
   });
 
   it('stars; a version with its contents; roles (viewer reads, editors save and restore)', async () => {
@@ -211,7 +218,7 @@ describe('Versions (e2e)', () => {
       .send({ email: viewer.email, role: 'viewer' })
       .expect(201);
     await newTask(owner, projectId, { name: 'A' });
-    const [v1] = await versions(viewer, projectId);
+    const v1 = (await versions(viewer, projectId)).find((v) => v.number === 1);
     const starred = (
       await as(owner, http().patch(`/versions/${v1!.id}`))
         .send({ starred: true })

@@ -1,8 +1,14 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, type EntityManager, Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity.js';
 import { Project } from '../projects/entities/project.entity.js';
+import { roleIn } from '../projects/project-access.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { AddMemberDto } from './dto/add-member.dto.js';
 import { asMemberDto, type MemberDto } from './dto/member.dto.js';
@@ -78,9 +84,16 @@ export class MembersService {
   }
 
   /** Their tabs leave the project's room at once: they hear nothing more about it. */
-  async remove(id: string): Promise<void> {
+  async remove(id: string, byUserId: string): Promise<void> {
     const member = await this.db.transaction(async (manager) => {
       const found = await lockedMember(manager, id);
+      // Someone else's place: an owner's to take away. Your own: yours to leave.
+      if (
+        found.userId !== byUserId &&
+        (await roleIn(this.db, found.projectId, byUserId)) !== 'owner'
+      ) {
+        throw new ForbiddenException('Only an owner of this project can do this');
+      }
       if (found.role === 'owner') await assertAnotherOwner(manager, found);
       await manager.delete(Member, { id });
       return found;

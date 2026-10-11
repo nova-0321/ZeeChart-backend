@@ -11,6 +11,7 @@ import { DataSource } from 'typeorm';
 import type { AuthedRequest } from '../auth/auth.guard.js';
 import { BROADCAST, type BroadcastOptions } from '../realtime/broadcast.decorator.js';
 import type { Snapshot } from './revision-diff.js';
+import { assertNoConflict, targetOf, versionIn } from './conflicts.js';
 import { loadSnapshot } from './revision-state.js';
 import { RevisionsService } from './revisions.service.js';
 import { VersionsService } from './versions.service.js';
@@ -66,25 +67,36 @@ export class RevisionInterceptor implements NestInterceptor {
     const projectId = await options.project(request, this.db).catch(() => undefined);
     const handle = () => lastValueFrom(next.handle(), { defaultValue: undefined });
     if (!projectId) return handle();
+    // Checked first, outside the queue: a malformed header is the request's own mistake.
+    const seen = versionIn(request);
+    const target = seen === undefined ? null : targetOf(options.entity, request);
     return this.inTurn(projectId, async () => {
       const before = await this.snapshot(projectId);
-      const body = await handle();
+      // Made from an older version: refused when someone else changed what it changes (#21).
+      // Inside the queue, so nothing can change in between the check and the write.
+      if (seen !== undefined && target && before) {
+        await assertNoConflict(this.db, before, target, seen, request.userId);
+      }
+      const body: unknown = await handle();
       if (before) {
         const after = await this.snapshot(projectId);
         if (after) {
-          const target = request.revisionWholeProject
+          const noted = request.revisionWholeProject
             ? undefined
             : (request.revisionTarget ?? text(request.params.id));
-          await this.revisions
+          const versions = await this.revisions
             .record(projectId, before, after, {
               userId: request.userId ?? null,
-              target,
+              target: noted,
               note: request.revisionNote,
               batch: request.revisionBatch,
             })
-            .catch((error: unknown) =>
-              this.logger.error(`Could not record the history of ${projectId}`, error as Error),
-            );
+            .catch((error: unknown) => {
+              this.logger.error(`Could not record the history of ${projectId}`, error as Error);
+              return new Map<string, number>();
+            });
+          // The answer carries the versions the change gave (its rows were read before it).
+          withVersions(body, versions);
           // And now and then a version of the whole project (VersionsService.autoSave).
           await this.versions
             .autoSave(projectId, after, request.userId ?? null)
@@ -120,3 +132,14 @@ export class RevisionInterceptor implements NestInterceptor {
 }
 
 const text = (value: unknown) => (typeof value === 'string' ? value : undefined);
+
+/** Puts the new version on each row of an answer (one row or a list) that the change gave one. */
+function withVersions(body: unknown, versions: Map<string, number>) {
+  if (versions.size === 0 || body === null || typeof body !== 'object') return;
+  for (const row of Array.isArray(body) ? body : [body]) {
+    const item = row as { id?: unknown; version?: unknown } | null;
+    if (item && typeof item.id === 'string' && 'version' in item && versions.has(item.id)) {
+      item.version = versions.get(item.id);
+    }
+  }
+}

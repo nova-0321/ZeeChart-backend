@@ -71,12 +71,15 @@ export class MembersController {
     return this.members.changeRole(id, dto.role);
   }
 
-  /** Remove a member from the project. 409 for the project's last owner. */
+  /**
+   * Remove a member from the project: an owner may remove anyone, and anyone may leave (remove
+   * themselves). 409 for the project's last owner.
+   */
   @Delete(':id')
   @HttpCode(204)
-  @ProjectAccess('owner', projectOfRow(Member))
+  @ProjectAccess('viewer', projectOfRow(Member))
   @Broadcast({ entity: 'member', action: 'delete', project: projectOfRow(Member) })
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.members.remove(id);
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() userId: string) {
+    return this.members.remove(id, userId);
   }
 }

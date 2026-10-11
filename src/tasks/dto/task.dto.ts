@@ -1,6 +1,5 @@
 import { Transform } from 'class-transformer';
 import {
-  IsDateString,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -12,6 +11,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { IsDay } from '../../common/is-day.js';
 import {
   TASK_PRIORITIES,
   TASK_TYPES,
@@ -37,11 +37,11 @@ export class TaskDto {
   type?: TaskType;
 
   /** "YYYY-MM-DD" (a full ISO date-time is accepted too). */
-  @IsDateString()
+  @IsDay()
   startDate: Date;
 
   /** "YYYY-MM-DD". Must not be before startDate. */
-  @IsDateString()
+  @IsDay()
   endDate: Date;
 
   /** 0 to 100. Defaults to 0. */
@@ -64,6 +64,7 @@ export class TaskDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(1_000_000)
   order?: number;
 
   @IsUUID()

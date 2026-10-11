@@ -668,7 +668,7 @@
             "bearer": []
           }
         ],
-        "summary": "Remove a member from the project. 409 for the project's last owner.",
+        "summary": "Remove a member from the project: an owner may remove anyone, and anyone may leave (remove\nthemselves). 409 for the project's last owner.",
         "tags": [
           "Members"
         ]
@@ -1700,6 +1700,10 @@
           "order": {
             "type": "number"
           },
+          "version": {
+            "type": "number",
+            "description": "How many changes it has had: the same number as its last revision (RevisionsService). A write\nmay send the one it last saw (If-Match) to be stopped when someone else changed the same thing\nsince (see docs/conflicts.md)."
+          },
           "updatedAt": {
             "format": "date-time",
             "type": "string"
@@ -1739,6 +1743,7 @@
           "createdAt",
           "color",
           "order",
+          "version",
           "updatedAt",
           "parentId",
           "parent",
@@ -1874,6 +1879,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "version": {
+            "type": "number",
+            "description": "How many changes it has had: the same number as its last revision (RevisionsService). A write\nmay send the one it last saw (If-Match) to be stopped when someone else changed the same thing\nsince (see docs/conflicts.md)."
+          },
           "updatedAt": {
             "format": "date-time",
             "type": "string"
@@ -1886,6 +1895,7 @@
           "tasks",
           "members",
           "createdAt",
+          "version",
           "updatedAt"
         ]
       },
@@ -1916,6 +1926,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "version": {
+            "type": "number",
+            "description": "How many changes it has had: the same number as its last revision (RevisionsService). A write\nmay send the one it last saw (If-Match) to be stopped when someone else changed the same thing\nsince (see docs/conflicts.md)."
+          },
           "updatedAt": {
             "format": "date-time",
             "type": "string"
@@ -1932,6 +1946,7 @@
           "endDate",
           "projectId",
           "createdAt",
+          "version",
           "updatedAt",
           "project"
         ]
@@ -1995,7 +2010,9 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Trimmed; a name of only spaces is refused. At most 255 characters.",
+            "maxLength": 255
           },
           "description": {
             "type": "string"
@@ -2047,6 +2064,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "version": {
+            "type": "number",
+            "description": "How many changes it has had: the same number as its last revision (RevisionsService). A write\nmay send the one it last saw (If-Match) to be stopped when someone else changed the same thing\nsince (see docs/conflicts.md)."
+          },
           "updatedAt": {
             "format": "date-time",
             "type": "string"
@@ -2078,6 +2099,7 @@
           "name",
           "archived",
           "createdAt",
+          "version",
           "updatedAt",
           "role",
           "joinedAt",
@@ -2088,7 +2110,9 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Trimmed; a name of only spaces is refused. At most 255 characters.",
+            "maxLength": 255
           },
           "description": {
             "type": "string"
@@ -2234,7 +2258,8 @@
           "order": {
             "type": "number",
             "description": "Position among the project's tasks. Defaults to the end of the list.",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 1000000
           },
           "projectId": {
             "type": "string",
@@ -2371,6 +2396,10 @@
             "type": "number",
             "description": "Days the successor waits after the predecessor; negative lets them overlap."
           },
+          "version": {
+            "type": "number",
+            "description": "How many changes it has had: the same number as its last revision (RevisionsService). A write\nmay send the one it last saw (If-Match) to be stopped when someone else changed the same thing\nsince (see docs/conflicts.md)."
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -2389,6 +2418,7 @@
           "toTaskId",
           "type",
           "lagDays",
+          "version",
           "createdAt",
           "fromTask",
           "toTask"

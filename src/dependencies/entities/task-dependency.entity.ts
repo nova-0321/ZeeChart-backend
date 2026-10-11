@@ -35,6 +35,14 @@ export class TaskDependency {
   @Column({ type: 'int', nullable: false, default: 0 })
   lagDays: number;
 
+  /**
+   * How many changes it has had: the same number as its last revision (RevisionsService). A write
+   * may send the one it last saw (If-Match) to be stopped when someone else changed the same thing
+   * since (see docs/conflicts.md).
+   */
+  @Column({ type: 'int', default: 0 })
+  version: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

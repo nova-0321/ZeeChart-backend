@@ -27,6 +27,14 @@ import {
   type TaskState,
 } from './revision-diff.js';
 
+/** Where each kind of row is stored. */
+export const TABLES = {
+  project: 'projects',
+  task: 'tasks',
+  event: 'events',
+  link: 'task_dependencies',
+} as const;
+
 /** At most this many revisions in one answer of the history. */
 export const MAX_PAGE = 100;
 
@@ -68,11 +76,18 @@ export class RevisionsService {
    * last version. Numbering waits for any other numbering of the project (a lock), so two at once
    * can't take the same number.
    */
-  async record(projectId: string, before: Snapshot, after: Snapshot, options: RecordOptions) {
+  async record(
+    projectId: string,
+    before: Snapshot,
+    after: Snapshot,
+    options: RecordOptions,
+  ): Promise<Map<string, number>> {
+    // The new version of each row that changed (what the answer to the request carries).
+    const versions = new Map<string, number>();
     // The project is gone (deleted): so is its history.
-    if (!after.project) return;
+    if (!after.project) return versions;
     const drafts = diffSnapshots(before, after, options.target);
-    if (drafts.length === 0) return;
+    if (drafts.length === 0) return versions;
     const batchId = randomUUID();
     await this.db.transaction(async (manager) => {
       await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`revisions:${projectId}`]);
@@ -82,13 +97,16 @@ export class RevisionsService {
         [drafts.map((draft) => draft.entityId)],
       );
       const versionOf = new Map(last.map((row) => [row.entityId, row.version]));
+      for (const draft of drafts) {
+        versions.set(draft.entityId, (versionOf.get(draft.entityId) ?? 0) + 1);
+      }
       await manager.save(
         drafts.map((draft) =>
           manager.create(Revision, {
             projectId,
             entityType: draft.entityType,
             entityId: draft.entityId,
-            version: (versionOf.get(draft.entityId) ?? 0) + 1,
+            version: versions.get(draft.entityId)!,
             action: draft.action,
             changedById: options.userId,
             summary:
@@ -105,7 +123,16 @@ export class RevisionsService {
           }),
         ),
       );
+      // Each row that is still there carries its new version (the same number as its revision).
+      for (const draft of drafts) {
+        if (!draft.after) continue;
+        await manager.query(
+          `UPDATE "${TABLES[draft.entityType]}" SET "version" = $2 WHERE "id" = $1`,
+          [draft.entityId, versions.get(draft.entityId)],
+        );
+      }
     });
+    return versions;
   }
 
   /**
@@ -167,6 +194,7 @@ export class RevisionsService {
           revision.projectId,
           {
             name: project.name,
+            // null clears it (the project had none then).
             description: project.description as string | undefined,
             archived: project.archived,
           },
@@ -230,19 +258,31 @@ export class RevisionsService {
         );
       }
     }
-    await this.tasks.update(current.id, {
-      name: state.name,
-      description: state.description ?? undefined,
-      priority: state.priority as 'medium',
-      progress: state.progress,
-      color: state.color,
-      startDate: state.startDate as unknown as Date,
-      endDate: state.endDate as unknown as Date,
-    });
-    if (current.type !== state.type) {
-      await this.tasks.changeType(current.id, state.type as Task['type']);
+    // Its group first: the step most likely to be refused (a link may not allow it there), before
+    // anything else is changed. If a later step is refused, the group is put back, so a refused
+    // restore leaves the task as it was.
+    const movedFrom = current.parentId !== parentId ? current.parentId : undefined;
+    if (movedFrom !== undefined) await this.tasks.setParent(current.id, parentId);
+    try {
+      if (current.type !== state.type) {
+        await this.tasks.changeType(current.id, state.type as Task['type']);
+      }
+      await this.tasks.update(current.id, {
+        name: state.name,
+        // null clears it (it had none then).
+        description: state.description as string | undefined,
+        priority: state.priority as 'medium',
+        progress: state.progress,
+        color: state.color,
+        startDate: state.startDate as unknown as Date,
+        endDate: state.endDate as unknown as Date,
+      });
+    } catch (error) {
+      if (movedFrom !== undefined) {
+        await this.tasks.setParent(current.id, movedFrom).catch(() => undefined);
+      }
+      throw error;
     }
-    if (current.parentId !== parentId) await this.tasks.setParent(current.id, parentId);
   }
 
   private async restoreEvent(projectId: string, state: EventState) {

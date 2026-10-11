@@ -194,22 +194,27 @@ describe('planEdit', () => {
     expect(dates(stretched, 'g')).toBe('2026-10-05..2026-10-16');
   });
 
-  it('refuses a group range that leaves one of its tasks out, but lets it grow or fit', () => {
+  it('a group with tasks keeps their length: no shorter, no longer; it can still be moved', () => {
     const grouped = [
       task('g', '2026-10-05', '2026-10-12', { type: 'group' }),
       task('c1', '2026-10-05', '2026-10-07', { parentId: 'g' }),
       task('c2', '2026-10-10', '2026-10-12', { parentId: 'g' }),
     ];
     expect(() => planEdit(grouped, [], 'g', '2026-10-05', '2026-10-11')).toThrow(
-      /group must cover its tasks \(2026-10-05 to 2026-10-12\)/,
+      /length follows its tasks \(2026-10-05 to 2026-10-12\)/,
     );
-    expect(() => planEdit(grouped, [], 'g', '2026-10-06', '2026-10-12')).toThrow(/must cover/);
-    expect(dates(planEdit(grouped, [], 'g', '2026-10-04', '2026-10-14'), 'g')).toBe(
-      '2026-10-04..2026-10-14',
-    );
+    expect(() => planEdit(grouped, [], 'g', '2026-10-06', '2026-10-12')).toThrow(/follows/);
+    expect(() => planEdit(grouped, [], 'g', '2026-10-04', '2026-10-14')).toThrow(/follows/);
     expect(dates(planEdit(grouped, [], 'g', '2026-10-05', '2026-10-12'), 'g')).toBe(
       '2026-10-05..2026-10-12',
     );
+    // Moved as a whole (the same length): the tasks go with it.
+    const moved = planEdit(grouped, [], 'g', '2026-10-07', '2026-10-14');
+    expect([dates(moved, 'g'), dates(moved, 'c1'), dates(moved, 'c2')]).toEqual([
+      '2026-10-07..2026-10-14',
+      '2026-10-07..2026-10-09',
+      '2026-10-12..2026-10-14',
+    ]);
   });
 
   it('moving a group clamps by the links into any of its tasks', () => {

@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
-import { IsDateString, IsNotEmpty, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { IsDay } from '../../common/is-day.js';
 
 export class CreateEventDto {
   // Trimmed before validation, so a name of only spaces is rejected as empty.
@@ -14,11 +15,11 @@ export class CreateEventDto {
   color: string;
 
   /** "YYYY-MM-DD": the first day. */
-  @IsDateString()
+  @IsDay()
   startDate: string;
 
   /** "YYYY-MM-DD": the last day. Must not be before startDate. */
-  @IsDateString()
+  @IsDay()
   endDate: string;
 
   @IsUUID()

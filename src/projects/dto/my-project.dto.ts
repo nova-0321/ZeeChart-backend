@@ -36,6 +36,7 @@ export const asMyProject = (
     archived: project.archived,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
+    version: project.version,
     role: member.role,
     joinedAt: member.joinedAt,
     addedBy: addedBy ? { id: addedBy.id, name: addedBy.name } : null,
