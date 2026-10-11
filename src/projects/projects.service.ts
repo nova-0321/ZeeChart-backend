@@ -1,7 +1,10 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, type EntityManager, Not, Repository } from 'typeorm';
 import { Member } from '../members/entities/member.entity.js';
+import { ProjectVersion } from '../revisions/entities/project-version.entity.js';
+import { Revision } from '../revisions/entities/revision.entity.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
 import { asMyProject, type MyProjectDto } from './dto/my-project.dto.js';
 import { UpdateProjectDto } from './dto/update-project.dto.js';
@@ -24,6 +27,38 @@ export class ProjectsService {
       const project = await manager.save(manager.create(Project, createProjectDto));
       const member = await manager.save(
         manager.create(Member, { projectId: project.id, userId, role: 'owner' }),
+      );
+      // The first line of its history (later changes are recorded by RevisionInterceptor).
+      const state = {
+        id: project.id,
+        name: project.name,
+        description: project.description ?? null,
+        archived: project.archived,
+      };
+      await manager.save(
+        manager.create(Revision, {
+          projectId: project.id,
+          entityType: 'project',
+          entityId: project.id,
+          version: 1,
+          action: 'create',
+          changedById: userId,
+          summary: `Created project “${project.name}”`,
+          before: null,
+          after: state,
+          batchId: randomUUID(),
+          primary: true,
+        }),
+      );
+      // And its first version, v1 (empty): later ones are saved as it changes.
+      await manager.save(
+        manager.create(ProjectVersion, {
+          projectId: project.id,
+          number: 1,
+          kind: 'auto',
+          content: { project: state, tasks: [], events: [], links: [] },
+          createdById: userId,
+        }),
       );
       return asMyProject({ ...member, project, addedBy: null });
     });

@@ -13,5 +13,7 @@ import { EventsService } from './events.service.js';
   ],
   controllers: [EventsController],
   providers: [EventsService],
+  // Restoring an event from its history (revisions).
+  exports: [EventsService],
 })
 export class EventsModule {}

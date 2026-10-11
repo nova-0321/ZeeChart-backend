@@ -116,10 +116,9 @@ export class TaskScheduler {
   }
 
   private async load(projectId: string, manager: EntityManager = this.taskRepo.manager) {
-    const [taskRows, linkRows] = await Promise.all([
-      manager.find(Task, { where: { projectId } }),
-      manager.find(TaskDependency, { where: { projectId } }),
-    ]);
+    // One after the other: in a transaction both use its one connection (see loadSnapshot).
+    const taskRows = await manager.find(Task, { where: { projectId } });
+    const linkRows = await manager.find(TaskDependency, { where: { projectId } });
     return {
       tasks: taskRows.map((row) => ({
         id: row.id,
