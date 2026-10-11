@@ -113,7 +113,10 @@ export class VersionsService {
       where: { projectId },
       order: { number: 'DESC' },
     });
-    if (latest && Date.now() - latest.createdAt.getTime() < AUTO_EVERY_MS) return;
+    // Not too often; but the first change of a new project is kept at once (its v1 is empty, so
+    // otherwise the history would show nothing of the work for its first 10 minutes).
+    const fresh = latest?.number === 1 && latest.content.tasks.length === 0;
+    if (latest && !fresh && Date.now() - latest.createdAt.getTime() < AUTO_EVERY_MS) return;
     const content = contentOf({ ...after, project: after.project });
     if (latest && sameContent(latest.content, content)) return;
     await this.save(projectId, 'auto', content, userId);
@@ -166,7 +169,10 @@ export class VersionsService {
     const version = await this.versionRepo.findOneBy({ id });
     if (!version) throw new NotFoundException('Not found');
     const { content } = version;
-    const name = await this.freeName(userId, `${content.project.name} (v${version.number})`);
+    // Within the 255 characters a name may have, " (v12) 99" included.
+    const suffix = ` (v${version.number})`;
+    const base = content.project.name.slice(0, 255 - suffix.length - 4).trimEnd();
+    const name = await this.freeName(userId, `${base}${suffix}`);
     const project = await this.projects.create(
       { name, description: content.project.description ?? undefined },
       userId,

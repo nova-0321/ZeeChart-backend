@@ -143,7 +143,12 @@ export class TaskService {
     }
 
     task.type = type;
-    if (type === 'milestone') task.endDate = task.startDate;
+    if (type === 'milestone' && dayOf(task.endDate) !== dayOf(task.startDate)) {
+      // A milestone is one day: its end moves to its start, which can shrink its group and move
+      // what is linked to it, as any date edit (the scheduler keeps those rules).
+      task.endDate = task.startDate;
+      return this.scheduler.applyDateEdit(task);
+    }
     return this.taskRepo.save(task);
   }
 

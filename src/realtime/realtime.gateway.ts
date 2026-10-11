@@ -178,7 +178,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   @SubscribeMessage(CURSOR_EVENT)
   cursor(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): void {
     const data = dataOf(socket);
-    if (!data.projectId) return;
+    // Not in its room any more (they left the project, or were removed): nothing to show there.
+    if (!data.projectId || !socket.rooms.has(projectRoom(data.projectId))) return;
     const input = (body ?? {}) as { x?: unknown; y?: unknown; at?: unknown };
     const [x, y] = [fraction(input.x), fraction(input.y)];
     if (x === undefined || y === undefined || (x === null) !== (y === null)) return;

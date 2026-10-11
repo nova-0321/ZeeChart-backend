@@ -44,6 +44,7 @@ export class BroadcastInterceptor implements NestInterceptor {
     if (!options || context.getType() !== 'http') return next.handle();
     const request = context.switchToHttp().getRequest<Request>();
     const sender = clientIdFrom(request.headers[CLIENT_ID_HEADER]);
+    const userId = (request as Request & { userId?: string }).userId;
 
     return from(this.locate(options, request)).pipe(
       switchMap((projectId) =>
@@ -57,12 +58,13 @@ export class BroadcastInterceptor implements NestInterceptor {
                 this.send(
                   { projectId: project, entity: options.entity, action: options.action, id },
                   sender,
+                  userId,
                 );
               }
             },
             error: (error: unknown) => {
               if (projectId && isServerError(error)) {
-                this.send({ projectId, entity: options.entity, action: 'resync' }, sender);
+                this.send({ projectId, entity: options.entity, action: 'resync' }, sender, userId);
               }
             },
           }),
@@ -82,8 +84,12 @@ export class BroadcastInterceptor implements NestInterceptor {
   }
 
   /** After the answer has gone out: sending never delays it. */
-  private send(message: ChangeMessage, sender: string | undefined) {
-    setImmediate(() => this.realtime.notify(message, sender));
+  private send(message: ChangeMessage, sender: string | undefined, userId: string | undefined) {
+    setImmediate(() => {
+      // A tab is skipped only when it is the requester's own: an id copied from someone else's tab
+      // (presence shows them) must not keep that person from hearing of the change.
+      void this.realtime.clientOf(sender, userId).then((own) => this.realtime.notify(message, own));
+    });
   }
 }
 

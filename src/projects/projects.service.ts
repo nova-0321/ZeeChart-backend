@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { randomUUID } from 'node:crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, type EntityManager, Not, Repository } from 'typeorm';
+import { rejectNulls } from '../common/reject-nulls.js';
 import { Member } from '../members/entities/member.entity.js';
 import { ProjectVersion } from '../revisions/entities/project-version.entity.js';
 import { Revision } from '../revisions/entities/revision.entity.js';
@@ -24,7 +25,10 @@ export class ProjectsService {
   create(createProjectDto: CreateProjectDto, userId: string): Promise<MyProjectDto> {
     return this.db.transaction(async (manager) => {
       await this.assertNameFree(manager, userId, createProjectDto.name);
-      const project = await manager.save(manager.create(Project, createProjectDto));
+      // Version 1: its first revision ("Created project") is written below, with the same number.
+      const project = await manager.save(
+        manager.create(Project, { ...createProjectDto, version: 1 }),
+      );
       const member = await manager.save(
         manager.create(Member, { projectId: project.id, userId, role: 'owner' }),
       );
@@ -85,6 +89,8 @@ export class ProjectsService {
   }
 
   async update(id: string, updateProjectDto: UpdateProjectDto, userId: string) {
+    // null is no value for a name (the description may be cleared).
+    rejectNulls(updateProjectDto, ['description']);
     await this.db.transaction(async (manager) => {
       const project = await manager.findOneBy(Project, { id });
       if (!project) throw new NotFoundException(`Project ${id} not found`);

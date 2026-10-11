@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { roleIn } from '../projects/project-access.js';
+import { TaskScheduler } from '../scheduling/task-scheduler.service.js';
 import type { UndoStepDto as UndoStep } from './dto/undo.dto.js';
 import { type BatchKind, Revision } from './entities/revision.entity.js';
 import {
@@ -46,6 +47,7 @@ export class UndoService {
     @InjectRepository(Revision)
     private readonly revisionRepo: Repository<Revision>,
     private readonly db: DataSource,
+    private readonly scheduler: TaskScheduler,
   ) {}
 
   async state(
@@ -75,10 +77,11 @@ export class UndoService {
 
   private async stacks(projectId: string, userId: string) {
     const batches = await this.db.query<
-      { batchId: string; batchKind: BatchKind; ofBatch: string | null }[]
+      { batchId: string; batchKind: BatchKind; ofBatch: string | null; creation: boolean }[]
     >(
-      `SELECT "batchId", "batchKind", "ofBatch" FROM (
-         SELECT "batchId", "batchKind", "ofBatch", MIN("createdAt") AS "at"
+      `SELECT "batchId", "batchKind", "ofBatch", "creation" FROM (
+         SELECT "batchId", "batchKind", "ofBatch", MIN("createdAt") AS "at",
+                bool_and("entityType" = 'project' AND "action" = 'create') AS "creation"
            FROM "revisions" WHERE "projectId" = $1 AND "changedById" = $2
           GROUP BY "batchId", "batchKind", "ofBatch"
           ORDER BY "at" DESC LIMIT $3) recent
@@ -93,6 +96,8 @@ export class UndoService {
       return at >= 0;
     };
     for (const batch of batches) {
+      // Making the project is not something to undo (it would mean deleting the project).
+      if (batch.creation) continue;
       if (batch.batchKind === 'change') {
         done.push(batch.batchId);
         undone = [];
@@ -182,6 +187,23 @@ export class UndoService {
         for (const link of task.links ?? []) await writeLink(manager, projectId, link);
       }
     });
+    // The groups it touched fit their tasks again: a task someone else put in a group since is
+    // still in it, and the group must cover it (a group is the span of its tasks).
+    const groups = new Set<string>();
+    for (const { revision, expected, wanted } of steps) {
+      if (revision.entityType !== 'task') continue;
+      for (const state of [expected, wanted] as (TaskState | null)[]) {
+        if (state?.parentId) groups.add(state.parentId);
+      }
+      if ((wanted as TaskState | null)?.type === 'group') groups.add(revision.entityId);
+    }
+    for (const groupId of groups) {
+      const there = await this.db.query<unknown[]>(
+        `SELECT 1 FROM "tasks" WHERE "id" = $1 AND "type" = 'group'`,
+        [groupId],
+      );
+      if (there.length > 0) await this.scheduler.refitGroup(projectId, groupId);
+    }
     const main = steps.find((step) => step.revision.primary) ?? steps[0]!;
     return { batchId, summary: plain(main.revision.summary) };
   }

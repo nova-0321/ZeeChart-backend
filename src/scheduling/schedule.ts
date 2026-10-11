@@ -1,3 +1,4 @@
+import { FIRST_YEAR, LAST_YEAR } from '../common/is-day.js';
 // The scheduling rules of task dependencies, as plain functions on in-memory data so they can be
 // tested without a database. Days are whole days; an end date is the last day of the task, so a
 // one-day task has start === end.
@@ -38,7 +39,17 @@ export class ScheduleError extends Error {}
 
 const DAY = 86_400_000;
 const toDay = (date: string) => Math.round(Date.parse(`${date.slice(0, 10)}T00:00:00Z`) / DAY);
-const fromDay = (day: number) => new Date(day * DAY).toISOString().slice(0, 10);
+const fromDay = (day: number) => {
+  const date = new Date(day * DAY);
+  // A push (a long lag, a far group) must not take a task out of the years the app keeps.
+  const year = date.getUTCFullYear();
+  if (!(year >= FIRST_YEAR && year <= LAST_YEAR)) {
+    throw new ScheduleError(
+      `Can't use these dates: a task would have to move outside the years ${FIRST_YEAR}–${LAST_YEAR}.`,
+    );
+  }
+  return date.toISOString().slice(0, 10);
+};
 
 interface Span {
   s: number;
@@ -364,11 +375,12 @@ export function planEdit(
     network.assertGroupsHold(id);
   } else {
     if (network.type(id) === 'group') {
-      // A group's range is the days of its tasks: it can grow with them, but not leave one out.
+      // A group's range is exactly the days of its tasks (see fitGroup): with tasks in it, its
+      // length follows them; it can be moved as a whole, but not made longer or shorter.
       const inside = network.childrenSpan(id);
-      if (inside && (start > inside.s || end < inside.e)) {
+      if (inside && (start !== inside.s || end !== inside.e)) {
         throw new ScheduleError(
-          `Can't use these dates: the group must cover its tasks (${fromDay(inside.s)} to ${fromDay(inside.e)}).`,
+          `A group's length follows its tasks (${fromDay(inside.s)} to ${fromDay(inside.e)}): move the group, or change its tasks.`,
         );
       }
     }

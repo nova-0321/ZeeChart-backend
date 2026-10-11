@@ -29,6 +29,23 @@ export class RealtimeService {
   }
 
   /**
+   * The tab id a request said it came from, if a tab with that id is connected as the same user;
+   * otherwise undefined (no tab is skipped). Never throws.
+   */
+  async clientOf(clientId: string | undefined, userId: string | undefined) {
+    const server = this.gateway.server;
+    if (!clientId || !userId || !server) return undefined;
+    try {
+      const sockets = await server.in(clientRoom(clientId)).fetchSockets();
+      return sockets.some((socket) => (socket.data as { userId?: string }).userId === userId)
+        ? clientId
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Tell every tab of one person about a change to their own membership, whatever project they
    * have open (they were added to a project they aren't in yet, or removed from one). Never throws.
    */
