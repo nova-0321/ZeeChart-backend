@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { TaskDto } from './dto/task.dto.js';
+import { Task } from './entities/task.entity.js';
 import { TaskService } from './task.service.js';
 
 const PROJECT_ID = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
@@ -234,26 +235,83 @@ describe('TaskService.update', () => {
 });
 
 describe('TaskService.remove', () => {
-  const repo = { findOneByOrFail: vi.fn(), remove: vi.fn() };
-  const scheduler = { refitGroup: vi.fn() };
+  const manager = { find: vi.fn(), delete: vi.fn(), update: vi.fn() };
+  const repo = { findOneByOrFail: vi.fn(), manager: { transaction: vi.fn() } };
+  const scheduler = { settle: vi.fn() };
   let service: TaskService;
+  const row = (id: string, order: number) => ({ id, order });
 
   beforeEach(() => {
     vi.resetAllMocks();
+    repo.manager.transaction.mockImplementation((work: (m: typeof manager) => unknown) =>
+      work(manager),
+    );
     service = new TaskService(repo as never, scheduler as never);
   });
 
-  it('fits the group the task was in to the tasks that are left', async () => {
-    repo.findOneByOrFail.mockResolvedValue({ id: 't1', projectId: PROJECT_ID, parentId: GROUP_ID });
+  it('fits the group the task was in to the tasks that are left, in the same transaction', async () => {
+    repo.findOneByOrFail.mockResolvedValue({
+      id: 't1',
+      projectId: PROJECT_ID,
+      parentId: GROUP_ID,
+      order: 1,
+    });
+    manager.find.mockResolvedValueOnce([]);
     await service.remove('t1');
-    expect(repo.remove).toHaveBeenCalled();
-    expect(scheduler.refitGroup).toHaveBeenCalledWith(PROJECT_ID, GROUP_ID);
+    expect(manager.delete).toHaveBeenCalled();
+    expect(scheduler.settle).toHaveBeenCalledWith(manager, PROJECT_ID, [GROUP_ID], []);
   });
 
   it('has no group to fit for a top-level task', async () => {
-    repo.findOneByOrFail.mockResolvedValue({ id: 't1', projectId: PROJECT_ID, parentId: null });
+    repo.findOneByOrFail.mockResolvedValue({
+      id: 't1',
+      projectId: PROJECT_ID,
+      parentId: null,
+      order: 1,
+    });
+    manager.find.mockResolvedValueOnce([]);
     await service.remove('t1');
-    expect(scheduler.refitGroup).not.toHaveBeenCalled();
+    expect(scheduler.settle).not.toHaveBeenCalled();
+  });
+
+  it("a deleted group's tasks take its place at the top level (no clashing places)", async () => {
+    // Top level: a1, G (2), b3. G holds c1, c2 (numbered 1, 2 inside it).
+    repo.findOneByOrFail.mockResolvedValue({
+      id: 'g',
+      projectId: PROJECT_ID,
+      parentId: null,
+      order: 2,
+    });
+    manager.find
+      .mockResolvedValueOnce([row('c1', 1), row('c2', 2)])
+      .mockResolvedValueOnce([row('a', 1), row('c1', 1), row('c2', 2), row('b', 3)]);
+    await service.remove('g');
+    const placed = Object.fromEntries(
+      manager.update.mock.calls.map((call) => {
+        const [, where, set] = call as [unknown, { id: string }, { order: number }];
+        return [where.id, set.order];
+      }),
+    );
+    // a stays 1; c1, c2 where G was (2, 3); b after them (4).
+    expect(placed).toEqual({ c1: 2, c2: 3, b: 4 });
+  });
+
+  it('a deleted group inside another: its tasks go into that group, at its place; it refits', async () => {
+    // P holds p1 (1), G (2). G holds c1.
+    repo.findOneByOrFail.mockResolvedValue({
+      id: 'g',
+      projectId: PROJECT_ID,
+      parentId: 'p',
+      order: 2,
+    });
+    manager.find
+      .mockResolvedValueOnce([row('c1', 1)])
+      .mockResolvedValueOnce([row('p1', 1), row('c1', 1)]);
+    await service.remove('g');
+    expect(manager.update).toHaveBeenCalledWith(Task, { parentId: 'g' }, { parentId: 'p' });
+    // c1 after p1, where G was.
+    expect(manager.update).toHaveBeenCalledWith(Task, { id: 'c1' }, { order: 2 });
+    expect(scheduler.settle).toHaveBeenCalledWith(manager, PROJECT_ID, ['p'], []);
   });
 });
 

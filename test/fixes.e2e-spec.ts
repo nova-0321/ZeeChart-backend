@@ -284,4 +284,85 @@ describe('Fixes (e2e)', () => {
       .body as { id: string }[];
     await as(owner, http().delete(`/members/${members[0]!.id}`)).expect(409);
   });
+
+  // The list order of a level: names by their place.
+  const orderOf = async (who: Account, projectId: string, parentId: string | null = null) =>
+    (
+      (await as(who, http().get(`/tasks?projectId=${projectId}`)).expect(200)).body as (TaskBody & {
+        order: number;
+      })[]
+    )
+      .filter((t) => t.parentId === parentId)
+      .sort((a, b) => a.order - b.order)
+      .map((t) => t.name)
+      .join(' ');
+
+  it('undo of a move puts the task back at its place, keeping a move someone made since', async () => {
+    const { owner, projectId } = await setUp();
+    const bob = await signUp('Bob');
+    await as(owner, http().post(`/projects/${projectId}/members`))
+      .send({ email: bob.email })
+      .expect(201);
+    const ids: Record<string, string> = {};
+    for (const name of ['a', 'b', 'c', 'd', 't']) {
+      ids[name] = ((await newTask(owner, projectId, { name }).expect(201)).body as TaskBody).id;
+    }
+    await as(owner, http().patch(`/tasks/${ids.t}/move`))
+      .send({ parentId: null, index: 0 })
+      .expect(200);
+    expect(await orderOf(owner, projectId)).toBe('t a b c d');
+    // Bob moves b to the end since.
+    await as(bob, http().patch(`/tasks/${ids.b}/move`))
+      .send({ parentId: null, index: 4 })
+      .expect(200);
+    expect(await orderOf(owner, projectId)).toBe('t a c d b');
+    // Olive's undo: t back at the end (its place then), b stays where Bob put it.
+    await as(owner, http().post(`/projects/${projectId}/undo`)).expect(201);
+    expect(await orderOf(owner, projectId)).toBe('a c d b t');
+    // And redo puts it first again; the next undo goes on to what came before.
+    await as(owner, http().post(`/projects/${projectId}/redo`)).expect(201);
+    expect(await orderOf(owner, projectId)).toBe('t a c d b');
+    const state = (await as(owner, http().get(`/projects/${projectId}/undo`)).expect(200)).body as {
+      undo: { summary: string } | null;
+    };
+    expect(state.undo?.summary).toMatch(/Moved in the list/);
+    // One history entry for the move, none for the tasks renumbered around it.
+    const history = (await as(owner, http().get(`/projects/${projectId}/revisions`)).expect(200))
+      .body as { summary: string; entityId: string }[];
+    expect(history.filter((r) => r.entityId === ids.a)).toHaveLength(1);
+  });
+
+  it("a task renumbered by someone else's move can still be deleted with the version it had", async () => {
+    const { owner, projectId } = await setUp();
+    const bob = await signUp('Bob');
+    await as(owner, http().post(`/projects/${projectId}/members`))
+      .send({ email: bob.email })
+      .expect(201);
+    const a = (await newTask(owner, projectId, { name: 'a' }).expect(201)).body as TaskBody & {
+      version: number;
+    };
+    const b = (await newTask(owner, projectId, { name: 'b' }).expect(201)).body as TaskBody;
+    // Bob moves b above a: a is renumbered, not changed.
+    await as(bob, http().patch(`/tasks/${b.id}/move`))
+      .send({ parentId: null, index: 0 })
+      .expect(200);
+    await as(owner, http().delete(`/tasks/${a.id}`))
+      .set('If-Match', String(a.version))
+      .expect(204);
+  });
+
+  it('deleting a group inside another puts its tasks in that group, at its place', async () => {
+    const { owner, projectId } = await setUp();
+    const p = (await newTask(owner, projectId, { name: 'P', type: 'group' }).expect(201))
+      .body as TaskBody;
+    await newTask(owner, projectId, { name: 'p1', parentId: p.id }).expect(201);
+    const g = (
+      await newTask(owner, projectId, { name: 'G', type: 'group', parentId: p.id }).expect(201)
+    ).body as TaskBody;
+    await newTask(owner, projectId, { name: 'p2', parentId: p.id }).expect(201);
+    await newTask(owner, projectId, { name: 'c1', parentId: g.id }).expect(201);
+    await newTask(owner, projectId, { name: 'c2', parentId: g.id }).expect(201);
+    await as(owner, http().delete(`/tasks/${g.id}`)).expect(204);
+    expect(await orderOf(owner, projectId, p.id)).toBe('p1 c1 c2 p2');
+  });
 });

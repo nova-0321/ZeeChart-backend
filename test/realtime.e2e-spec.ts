@@ -1,4 +1,5 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
@@ -35,6 +36,7 @@ describe('Realtime (e2e)', () => {
   // member may join a project's room, only an owner may change a project; see
   // projects/project-access.ts).
   let ownerToken: string;
+  let ownerId: string;
 
   /** A socket signed in as `token` (the owner unless told otherwise; null: no token at all). */
   const open = (clientId?: unknown, token: string | null = ownerToken) => {
@@ -108,6 +110,7 @@ describe('Realtime (e2e)', () => {
         .expect(201)
     ).body as { accessToken: string; user: { id: string } };
     ownerToken = signedUp.accessToken;
+    ownerId = signedUp.user.id;
   });
 
   afterEach(() => {
@@ -210,11 +213,11 @@ describe('Realtime (e2e)', () => {
       const tab = await connect(id);
       const plain = await connect();
       const junk = await connect('not-a-uuid');
-      expect((await gateway.server.in(clientRoom(id)).fetchSockets()).map((s) => s.id)).toEqual([
-        tab.id,
-      ]);
+      expect(
+        (await gateway.server.in(clientRoom(ownerId, id)).fetchSockets()).map((s) => s.id),
+      ).toEqual([tab.id]);
       expect(plain.connected && junk.connected).toBe(true);
-      expect(await gateway.server.in(clientRoom('not-a-uuid')).fetchSockets()).toEqual([]);
+      expect(await gateway.server.in(clientRoom(ownerId, 'not-a-uuid')).fetchSockets()).toEqual([]);
     });
 
     it('reach everyone with the project open except the tab that made the change', async () => {
@@ -232,7 +235,7 @@ describe('Realtime (e2e)', () => {
         action: 'update',
         id: randomUUID(),
       };
-      realtime.notify(message, senderId);
+      realtime.notify(message, { userId: ownerId, clientId: senderId });
       await settle();
       expect(toSender).toEqual([]);
       expect(toOther).toEqual([message]);
@@ -259,8 +262,14 @@ describe('Realtime (e2e)', () => {
       const a = await connect(randomUUID());
       await a.emitWithAck('join', { projectId: id });
       const got = inbox(a);
-      realtime.notify({ projectId: id, entity: 'task', action: 'delete' }, randomUUID());
-      realtime.notify({ projectId: id, entity: 'task', action: 'delete' }, 'junk');
+      realtime.notify(
+        { projectId: id, entity: 'task', action: 'delete' },
+        { userId: ownerId, clientId: randomUUID() },
+      );
+      realtime.notify(
+        { projectId: id, entity: 'task', action: 'delete' },
+        { userId: ownerId, clientId: 'junk' },
+      );
       await settle();
       expect(got).toHaveLength(2);
     });
@@ -575,8 +584,8 @@ describe('Realtime (e2e)', () => {
       expect(toBob).toEqual([
         {
           projectId: here,
-          id: ownerTab,
-          userId: expect.any(String),
+          id: `${ownerId}:${ownerTab}`,
+          userId: ownerId,
           name: 'Owner',
           x: 0.25,
           y: 0.5,
@@ -649,11 +658,16 @@ describe('Realtime (e2e)', () => {
     /** The latest presence message a socket got, from now on. */
     const presence = (socket: Socket) => {
       const seen: { last?: { projectId: string; members: string[] } } = {};
-      // Tab ids only (the names are checked on their own).
+      // Tab ids only, without the user they are under (the names and users are checked on their own).
       socket.on(
         'presence',
         (message: PresenceMessage) =>
-          (seen.last = { projectId: message.projectId, members: message.members.map((m) => m.id) }),
+          (seen.last = {
+            projectId: message.projectId,
+            members: message.members.map((m) =>
+              m.id.startsWith(`${m.userId}:`) ? m.id.slice(m.userId.length + 1) : m.id,
+            ),
+          }),
       );
       return seen;
     };
@@ -728,10 +742,18 @@ describe('Realtime (e2e)', () => {
       await b.emitWithAck('join', { projectId: id });
       await settle();
       expect(last?.members).toEqual([
-        { id: ownerTab, userId: expect.any(String), name: 'Owner' },
-        { id: bobTab, userId: bob.id, name: 'Bob' },
+        // Each tab under its user: a copied tab id can't make two people one tab.
+        { id: `${ownerId}:${ownerTab}`, userId: ownerId, name: 'Owner' },
+        { id: `${bob.id}:${bobTab}`, userId: bob.id, name: 'Bob' },
       ]);
     });
+
+    it('a connection is closed when its token runs out (no more changes reach it)', async () => {
+      const short = await app.get(JwtService).signAsync({ sub: ownerId }, { expiresIn: '2s' });
+      const socket = await connect(randomUUID(), short);
+      const closed = new Promise<string>((resolve) => socket.once('disconnect', resolve));
+      await expect(closed).resolves.toBe('io server disconnect');
+    }, 10_000);
 
     it('a refused join announces nothing', async () => {
       const id = await project('pr5');

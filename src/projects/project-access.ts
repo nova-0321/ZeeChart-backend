@@ -9,7 +9,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { isUUID } from 'class-validator';
 import type { Request } from 'express';
-import { DataSource, type EntityTarget, type ObjectLiteral } from 'typeorm';
+import { DataSource, type EntityManager, type EntityTarget, type ObjectLiteral } from 'typeorm';
 import type { AuthedRequest } from '../auth/auth.guard.js';
 import { Member } from '../members/entities/member.entity.js';
 import { type MemberRole, roleCovers } from '../members/member-role.js';
@@ -126,7 +126,7 @@ export class ProjectAccessGuard implements CanActivate {
 
 /** Someone's role in a project, or null when they are not a member. */
 export const roleIn = async (
-  db: DataSource,
+  db: DataSource | EntityManager,
   projectId: string,
   userId: string,
 ): Promise<MemberRole | null> => {

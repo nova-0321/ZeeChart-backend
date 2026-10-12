@@ -17,6 +17,7 @@ import { RevisionsService } from './revisions.service.js';
 import { ProjectVersionsController, VersionsController } from './versions.controller.js';
 import { VersionsService } from './versions.service.js';
 import { UndoController } from './undo.controller.js';
+import { RealtimeModule } from '../realtime/realtime.module.js';
 import { UndoService } from './undo.service.js';
 
 /** Each project's history and saved versions, restoring from them, and undo / redo (#19). */
@@ -31,6 +32,8 @@ import { UndoService } from './undo.service.js';
     ProjectsModule,
     DependenciesModule,
     SchedulingModule,
+    // Telling the project when a refused request had already saved part of its work.
+    RealtimeModule,
   ],
   controllers: [
     ProjectRevisionsController,

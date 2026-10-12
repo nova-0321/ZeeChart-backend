@@ -1,4 +1,5 @@
 import {
+  Index,
   Column,
   CreateDateColumn,
   Entity,
@@ -12,6 +13,9 @@ import {
 import { Project } from '../../projects/entities/project.entity.js';
 
 @Entity('tasks')
+// Every read of a project's tasks is by project; a group's children by parent.
+@Index('IDX_tasks_projectId', ['projectId'])
+@Index('IDX_tasks_parentId', ['parentId'])
 export class Task {
   @PrimaryGeneratedColumn('uuid')
   id: string;

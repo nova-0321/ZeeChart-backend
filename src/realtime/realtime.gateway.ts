@@ -47,7 +47,14 @@ interface SocketData {
   projectId?: string;
   /** When it last passed on a cursor (ms): more than CURSOR_MIN_MS apart, or dropped. */
   cursorAt?: number;
+  /** When its token runs out (ms since 1970): the connection is closed then. */
+  expiresAt?: number;
 }
+
+/** Closes connections whose token ran out (see handleConnection). */
+const expiryTimers = new WeakMap<Socket, ReturnType<typeof setTimeout>>();
+/** setTimeout can't wait longer than this (about 24 days); a later end is checked again then. */
+const MAX_WAIT_MS = 2 ** 31 - 1;
 
 /** A tab's cursors are passed on at most this often (a busy or broken client can't flood a room). */
 const CURSOR_MIN_MS = 30;
@@ -134,14 +141,44 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const clientId = clientIdFrom(
       (socket.handshake.auth as { clientId?: unknown } | undefined)?.clientId,
     );
-    dataOf(socket).memberId = clientId ?? `guest:${socket.id}`;
+    // Under the user too, as the room: two people can't show as one tab (one id copied).
+    dataOf(socket).memberId = clientId
+      ? `${dataOf(socket).userId}:${clientId}`
+      : `guest:${socket.id}`;
     const rooms = [userRoom(dataOf(socket).userId)];
-    if (clientId) rooms.push(clientRoom(clientId));
+    if (clientId) rooms.push(clientRoom(dataOf(socket).userId, clientId));
     await socket.join(rooms);
+    this.closeWhenExpired(socket);
   }
 
   /** The others in its project are told it has gone. */
+  /**
+   * A token is only checked when the connection opens: when it runs out, the connection is closed,
+   * so it hears nothing more (the app then finds the session ended and signs out).
+   */
+  private closeWhenExpired(socket: Socket) {
+    const { expiresAt } = dataOf(socket);
+    if (!expiresAt) return;
+    const wait = expiresAt - Date.now();
+    if (wait <= 0) {
+      socket.disconnect(true);
+      return;
+    }
+    expiryTimers.set(
+      socket,
+      setTimeout(
+        () => {
+          if (Date.now() >= expiresAt) socket.disconnect(true);
+          else this.closeWhenExpired(socket);
+        },
+        Math.min(wait, MAX_WAIT_MS),
+      ),
+    );
+  }
+
   async handleDisconnect(socket: Socket) {
+    clearTimeout(expiryTimers.get(socket));
+    expiryTimers.delete(socket);
     const { projectId } = dataOf(socket);
     if (projectId) await this.announce(projectId);
   }
@@ -164,6 +201,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     if (!member) return { ok: false, error: `Project ${projectId} not found` };
     const left = await this.leaveProjects(socket, projectRoom(projectId));
     await socket.join(projectRoom(projectId));
+    // Removed while this was on its way (the removal took their tabs out before this one was in):
+    // out again, or it would hear of the project from now on.
+    if ((await roleIn(this.db, projectId, dataOf(socket).userId).catch(() => null)) === null) {
+      await socket.leave(projectRoom(projectId));
+      await Promise.all(left.map((id) => this.announce(id)));
+      return { ok: false, error: `Project ${projectId} not found` };
+    }
     dataOf(socket).projectId = projectId;
     this.logger.debug(`${socket.id} joined ${projectRoom(projectId)}`);
     await Promise.all([projectId, ...left].map((id) => this.announce(id)));
@@ -235,7 +279,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     if (typeof token !== 'string' || !token) throw new Error('Sign in first');
     let userId: string;
     try {
-      userId = (await this.jwt.verifyAsync<TokenPayload>(token)).sub;
+      const payload = await this.jwt.verifyAsync<TokenPayload & { exp?: number }>(token);
+      userId = payload.sub;
+      if (payload.exp) dataOf(socket).expiresAt = payload.exp * 1000;
     } catch {
       // Expired, tampered with, or signed with another secret.
       throw new Error('Your session has ended. Sign in again');

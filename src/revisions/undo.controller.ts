@@ -39,8 +39,9 @@ export class UndoController {
     @CurrentUser() userId: string,
     @Req() request: RevisionRequest,
   ): Promise<UndoStepDto> {
-    const step = await this.undos.undo(projectId, userId);
+    const { step, placed } = await this.undos.undo(projectId, userId);
     request.revisionBatch = { kind: 'undo', of: step.batchId };
+    request.revisionPlaced = new Set(placed);
     request.revisionWholeProject = true;
     request.revisionNote = 'Undo';
     return step;
@@ -55,8 +56,9 @@ export class UndoController {
     @CurrentUser() userId: string,
     @Req() request: RevisionRequest,
   ): Promise<UndoStepDto> {
-    const step = await this.undos.redo(projectId, userId);
+    const { step, placed } = await this.undos.redo(projectId, userId);
     request.revisionBatch = { kind: 'redo', of: step.batchId };
+    request.revisionPlaced = new Set(placed);
     request.revisionWholeProject = true;
     request.revisionNote = 'Redo';
     return step;

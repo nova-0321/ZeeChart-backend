@@ -53,25 +53,28 @@ One event, `changed`:
 ```ts
 interface ChangeMessage {
   projectId: string;
-  entity: 'project' | 'task' | 'dependency' | 'event' | 'member' | 'revision' | 'version';
+  entity:
+    'project' | 'task' | 'dependency' | 'event' | 'member' | 'invitation' | 'revision' | 'version';
   action: 'create' | 'update' | 'delete' | 'resync';
   id?: string; // the row the request was about; absent for resync
 }
 ```
 
-| Routes                                                                             | Message                                                                                 |
-| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `POST /tasks`                                                                      | `task` `create`, the new task's id                                                      |
-| `PATCH /tasks/:id`, `/:id/parent`, `/:id/move`, `/:id/type`                        | `task` `update`                                                                         |
-| `DELETE /tasks/:id`                                                                | `task` `delete`                                                                         |
-| `POST`, `PATCH`, `DELETE /dependencies`                                            | `dependency` `create` / `update` / `delete`                                             |
-| `POST`, `PATCH`, `DELETE /events`                                                  | `event` `create` / `update` / `delete`                                                  |
-| `PATCH /projects/:id`, `/:id/archive`, `/:id/reopen`                               | `project` `update`                                                                      |
-| `DELETE /projects/:id`                                                             | `project` `delete` (whoever has it open should move off it)                             |
-| `POST /projects/:id/members`, `PATCH` / `DELETE /members/:id`                      | `member` `create` / `update` / `delete`, the member's id                                |
-| `POST /revisions/:id/restore`                                                      | `revision` `update`, the revision's id (a task, an event or the project changed)        |
-| `POST /projects/:id/versions`, `PATCH /versions/:id`, `POST /versions/:id/restore` | `version` `create` / `update` (a restore changes the whole project)                     |
-| `POST /projects`                                                                   | nothing: only the owner changes the project list, and no one is in a new project's room |
+| Routes                                                                                    | Message                                                                                                          |
+| ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `POST /tasks`                                                                             | `task` `create`, the new task's id                                                                               |
+| `PATCH /tasks/:id`, `/:id/parent`, `/:id/move`, `/:id/type`                               | `task` `update`                                                                                                  |
+| `DELETE /tasks/:id`                                                                       | `task` `delete`                                                                                                  |
+| `POST`, `PATCH`, `DELETE /dependencies`                                                   | `dependency` `create` / `update` / `delete`                                                                      |
+| `POST`, `PATCH`, `DELETE /events`                                                         | `event` `create` / `update` / `delete`                                                                           |
+| `PATCH /projects/:id`, `/:id/archive`, `/:id/reopen`                                      | `project` `update`                                                                                               |
+| `DELETE /projects/:id`                                                                    | `project` `delete` (whoever has it open should move off it)                                                      |
+| `POST /projects/:id/members`, `PATCH` / `DELETE /members/:id`                             | `member` `create` / `update` / `delete`, the member's id                                                         |
+| `POST /projects/:id/invitations`, `POST /invitations/:id/link`, `DELETE /invitations/:id` | `invitation` `create` / `update` / `delete` (an invite of someone with an account adds them: reload members too) |
+| `POST /invites/accept` (an invite link taken up)                                          | `member` `create`, the new member's id, and `invitation` `delete`, the invitation's id                           |
+| `POST /revisions/:id/restore`                                                             | `revision` `update`, the revision's id (a task, an event or the project changed)                                 |
+| `POST /projects/:id/versions`, `PATCH /versions/:id`, `POST /versions/:id/restore`        | `version` `create` / `update` (a restore changes the whole project)                                              |
+| `POST /projects`                                                                          | nothing: only the owner changes the project list, and no one is in a new project's room                          |
 
 ### Your own memberships
 
@@ -168,6 +171,7 @@ that leaves the room disappears from the presence list: clients drop its cursor 
 - `member`: reload the members. When it is about you (or a project you don't have open), reload
   your project list too: your role in it, or the project itself, changed. Removed from the project
   you have open: leave it, and show another project.
+- `invitation`: reload the members and the invitations (an open members panel).
 - After a reconnect, join again and reload once: messages sent while disconnected are lost.
 - Several messages close together can share one reload.
 
@@ -189,8 +193,9 @@ the handler runs, so a delete still knows its project.
 
 ## Limits
 
-- **The token is checked when connecting only.** A tab keeps its connection after the token
-  expires, until it disconnects; it can't join a project it is not a member of.
+- **The token is checked when connecting**, and the connection is closed when the token runs out
+  (`disconnect` with the reason `io server disconnect`: the app then checks the session, which signs
+  it out). It can't join a project it is not a member of.
 - **One server instance.** Rooms live in memory. Running several instances needs socket.io's Redis
   adapter.
 - **No conflict detection.** Two people saving the same task: the last save wins. Version checks

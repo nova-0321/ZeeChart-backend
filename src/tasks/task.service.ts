@@ -64,13 +64,41 @@ export class TaskService {
     return (row?.max ?? 0) + 1;
   }
 
-  /** Children are kept: the FK is ON DELETE SET NULL, so they become top-level. */
+  /**
+   * A deleted group's tasks are kept: they go up into the list it was in (the group above it, or the
+   * top level), taking its place there. All in one transaction with the refit of the group it was
+   * in, which keeps those tasks too: all of it, or none.
+   */
   async remove(id: string) {
     const task = await this.taskRepo.findOneByOrFail({ id });
     const { parentId, projectId } = task;
-    await this.taskRepo.remove(task);
-    // The group the task was in shrinks to the tasks that are left.
-    if (parentId) await this.scheduler.refitGroup(projectId, parentId);
+    await this.taskRepo.manager.transaction(async (manager) => {
+      const children = await manager.find(Task, {
+        where: { parentId: id },
+        order: { order: 'ASC', createdAt: 'ASC' },
+      });
+      // Up a level first (the FK would only make them top-level).
+      if (children.length > 0) await manager.update(Task, { parentId: id }, { parentId });
+      await manager.delete(Task, { id });
+      if (children.length > 0) {
+        const level = await manager.find(Task, {
+          where: { projectId, parentId: parentId ?? IsNull() },
+          order: { order: 'ASC', createdAt: 'ASC' },
+        });
+        const moved = new Set(children.map((child) => child.id));
+        const others = level.filter((row) => !moved.has(row.id));
+        // Where the group was in that list.
+        const at = others.filter((row) => row.order < task.order).length;
+        const placed = [...others.slice(0, at), ...children, ...others.slice(at)];
+        for (const [index, row] of placed.entries()) {
+          if (row.order !== index + 1) {
+            await manager.update(Task, { id: row.id }, { order: index + 1 });
+          }
+        }
+      }
+      // The group the task was in fits what is in it now.
+      if (parentId) await this.scheduler.settle(manager, projectId, [parentId], []);
+    });
   }
 
   /** Move a task under a group, or pass null to make it top-level. */

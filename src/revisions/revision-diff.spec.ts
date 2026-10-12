@@ -90,7 +90,7 @@ describe('diffSnapshots', () => {
     ]);
   });
 
-  it('a move in the list: only the moved task, not the ones renumbered around it', () => {
+  it('a move in the list: only the moved task, with its place before and after', () => {
     const before = snapshot([
       task('a', { order: 1 }),
       task('b', { order: 2 }),
@@ -103,6 +103,14 @@ describe('diffSnapshots', () => {
     ]);
     const drafts = diffSnapshots(before, after, 'c');
     expect(drafts.map((d) => [d.entityId, d.summary])).toEqual([['c', '“c”: Moved in the list']]);
+    expect([(drafts[0]!.before as TaskState).place, (drafts[0]!.after as TaskState).place]).toEqual(
+      [2, 0],
+    );
+    // With no row named (an undo, a redo, a restore): only the rows it put back at a place.
+    expect(diffSnapshots(before, after)).toEqual([]);
+    expect(diffSnapshots(before, after, undefined, new Set(['c'])).map((d) => d.entityId)).toEqual([
+      'c',
+    ]);
   });
 
   it('into a group, named; out of one', () => {

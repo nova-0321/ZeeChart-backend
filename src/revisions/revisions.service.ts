@@ -44,6 +44,8 @@ export interface RecordOptions {
   target?: string;
   /** An undo or redo of another batch (see UndoService); a plain change when left out. */
   batch?: { kind: BatchKind; of: string };
+  /** Tasks an undo or redo put back at a place in their list (see diffSnapshots). */
+  placed?: ReadonlySet<string>;
   /** Said first in the summary of `target`'s revision, or of every one with no target. */
   note?: string;
 }
@@ -86,7 +88,7 @@ export class RevisionsService {
     const versions = new Map<string, number>();
     // The project is gone (deleted): so is its history.
     if (!after.project) return versions;
-    const drafts = diffSnapshots(before, after, options.target);
+    const drafts = diffSnapshots(before, after, options.target, options.placed);
     if (drafts.length === 0) return versions;
     const batchId = randomUUID();
     await this.db.transaction(async (manager) => {
@@ -259,14 +261,13 @@ export class RevisionsService {
       }
     }
     // Its group first: the step most likely to be refused (a link may not allow it there), before
-    // anything else is changed. If a later step is refused, the group is put back, so a refused
-    // restore leaves the task as it was.
+    // anything else is changed. If a later step is refused, the group (and the type, with the
+    // dates it had) is put back, so a refused restore leaves the task as it was.
     const movedFrom = current.parentId !== parentId ? current.parentId : undefined;
     if (movedFrom !== undefined) await this.tasks.setParent(current.id, parentId);
+    const typeChanged = current.type !== state.type;
     try {
-      if (current.type !== state.type) {
-        await this.tasks.changeType(current.id, state.type as Task['type']);
-      }
+      if (typeChanged) await this.tasks.changeType(current.id, state.type as Task['type']);
       await this.tasks.update(current.id, {
         name: state.name,
         // null clears it (it had none then).
@@ -278,6 +279,17 @@ export class RevisionsService {
         endDate: state.endDate as unknown as Date,
       });
     } catch (error) {
+      if (typeChanged) {
+        await this.tasks
+          .changeType(current.id, current.type)
+          .then(() =>
+            this.tasks.update(current.id, {
+              startDate: current.startDate,
+              endDate: current.endDate,
+            }),
+          )
+          .catch(() => undefined);
+      }
       if (movedFrom !== undefined) {
         await this.tasks.setParent(current.id, movedFrom).catch(() => undefined);
       }

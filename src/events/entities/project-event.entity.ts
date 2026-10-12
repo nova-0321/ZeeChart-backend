@@ -1,4 +1,5 @@
 import {
+  Index,
   Column,
   CreateDateColumn,
   Entity,
@@ -15,6 +16,7 @@ import { Project } from '../../projects/entities/project.entity.js';
  * period...). It is drawn across the timeline, not tied to any task.
  */
 @Entity('events')
+@Index('IDX_events_projectId', ['projectId'])
 export class ProjectEvent {
   @PrimaryGeneratedColumn('uuid')
   id: string;

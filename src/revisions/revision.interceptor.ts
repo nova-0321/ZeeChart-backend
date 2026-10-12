@@ -14,6 +14,7 @@ import type { Snapshot } from './revision-diff.js';
 import { assertNoConflict, targetOf, versionIn } from './conflicts.js';
 import { loadSnapshot } from './revision-state.js';
 import { RevisionsService } from './revisions.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { VersionsService } from './versions.service.js';
 
 /** What a route may add to its revisions (the restore route says what it restored). */
@@ -24,6 +25,8 @@ export interface RevisionRequest extends AuthedRequest {
   revisionWholeProject?: boolean;
   /** The request undid or redid another batch (UndoService). */
   revisionBatch?: { kind: 'undo' | 'redo'; of: string };
+  /** Tasks the undo or redo put back at a place in their list (their moves are recorded). */
+  revisionPlaced?: ReadonlySet<string>;
 }
 
 /**
@@ -49,6 +52,7 @@ export class RevisionInterceptor implements NestInterceptor {
     private readonly db: DataSource,
     private readonly revisions: RevisionsService,
     private readonly versions: VersionsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -56,7 +60,12 @@ export class RevisionInterceptor implements NestInterceptor {
       BROADCAST,
       context.getHandler(),
     );
-    if (!options || options.entity === 'member' || context.getType() !== 'http') {
+    if (
+      !options ||
+      options.entity === 'member' ||
+      options.entity === 'invitation' ||
+      context.getType() !== 'http'
+    ) {
       return next.handle();
     }
     const request = context.switchToHttp().getRequest<RevisionRequest>();
@@ -77,7 +86,15 @@ export class RevisionInterceptor implements NestInterceptor {
       if (seen !== undefined && target && before) {
         await assertNoConflict(this.db, before, target, seen, request.userId);
       }
-      const body: unknown = await handle();
+      let body: unknown;
+      try {
+        body = await handle();
+      } catch (error) {
+        // Refused part way (a restore whose last step wasn't allowed, a delete whose refit
+        // failed): what it saved before that is still recorded, and the others told to reload.
+        if (before) await this.recordFailed(projectId, before, request);
+        throw error;
+      }
       if (before) {
         const after = await this.snapshot(projectId);
         if (after) {
@@ -89,6 +106,7 @@ export class RevisionInterceptor implements NestInterceptor {
               userId: request.userId ?? null,
               target: noted,
               note: request.revisionNote,
+              placed: request.revisionPlaced,
               batch: request.revisionBatch,
             })
             .catch((error: unknown) => {
@@ -107,6 +125,27 @@ export class RevisionInterceptor implements NestInterceptor {
       }
       return body;
     });
+  }
+
+  /** The part of a refused request that was saved: in the history, and told to the others. */
+  private async recordFailed(projectId: string, before: Snapshot, request: RevisionRequest) {
+    try {
+      const after = await this.snapshot(projectId);
+      if (!after) return;
+      const versions = await this.revisions.record(projectId, before, after, {
+        userId: request.userId ?? null,
+        target: request.revisionWholeProject ? undefined : text(request.params.id),
+        note: request.revisionNote,
+      });
+      if (versions.size > 0) {
+        this.realtime.notify({ projectId, entity: 'revision', action: 'resync' });
+      }
+    } catch (error) {
+      this.logger.error(
+        `Could not record what a refused request saved in ${projectId}`,
+        error as Error,
+      );
+    }
   }
 
   private async snapshot(projectId: string): Promise<Snapshot | null> {
