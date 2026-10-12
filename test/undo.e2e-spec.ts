@@ -328,5 +328,6 @@ describe('Undo, redo and versions (e2e)', () => {
     expect(all.length).toBe(31);
     expect(all.at(-1)).toMatchObject({ number: 1, starred: true });
     expect(all[0]!.number).toBe(34);
-  });
+    // 33 changes, each saving a whole version: longer than the default 5 s on a slow machine.
+  }, 20_000);
 });

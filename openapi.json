@@ -674,6 +674,223 @@
         ]
       }
     },
+    "/projects/{id}/invitations": {
+      "get": {
+        "operationId": "ProjectInvitations_list",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InvitationDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The project's pending invitations, oldest first.",
+        "tags": [
+          "ProjectInvitations"
+        ]
+      },
+      "post": {
+        "operationId": "ProjectInvitations_invite",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddMemberDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Invite someone by email: added as a member at once when they have an account (`added`),\notherwise kept as an invitation until they sign up with it (`invited`). 409 when they are\nalready a member, or already invited.",
+        "tags": [
+          "ProjectInvitations"
+        ]
+      }
+    },
+    "/invitations/{id}": {
+      "delete": {
+        "operationId": "Invitations_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cancel a pending invitation (owners).",
+        "tags": [
+          "Invitations"
+        ]
+      }
+    },
+    "/invitations/{id}/link": {
+      "post": {
+        "operationId": "Invitations_renewLink",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteLinkDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A new secret link for a pending invitation, for another INVITE_DAYS days (owners). The old link\nstops working. Only the new link's secret is answered, this once.",
+        "tags": [
+          "Invitations"
+        ]
+      }
+    },
+    "/invites/preview": {
+      "post": {
+        "operationId": "InviteLinks_preview",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInviteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitePreviewDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "What a link is for (the project's name, who invited, the role): 404 when unknown or expired.\nA POST with the secret in the body, so it stays out of URLs (logs, history).",
+        "tags": [
+          "InviteLinks"
+        ]
+      }
+    },
+    "/invites/accept": {
+      "post": {
+        "operationId": "InviteLinks_accept",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInviteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedInviteDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Join with a link, signed in: a member with its role; the link is used up.",
+        "tags": [
+          "InviteLinks"
+        ]
+      }
+    },
     "/tasks": {
       "get": {
         "operationId": "Task_findByProject",
@@ -2204,6 +2421,172 @@
         },
         "required": [
           "role"
+        ]
+      },
+      "InvitationDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemberRole"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "invitedById": {
+            "type": "string",
+            "nullable": true,
+            "description": "Who invited them, and their name (null once that account is deleted)."
+          },
+          "invitedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Its link works until then."
+          }
+        },
+        "required": [
+          "role",
+          "id",
+          "projectId",
+          "email",
+          "invitedById",
+          "invitedByName",
+          "createdAt",
+          "expiresAt"
+        ]
+      },
+      "InviteResultDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "added",
+              "invited"
+            ],
+            "type": "string"
+          },
+          "member": {
+            "nullable": true,
+            "description": "The new member (when `added`).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemberDto"
+              }
+            ]
+          },
+          "invitation": {
+            "nullable": true,
+            "description": "The new invitation (when `invited`).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InvitationDto"
+              }
+            ]
+          },
+          "token": {
+            "type": "string",
+            "nullable": true,
+            "description": "The secret of its link (when `invited`): shown this once, never stored. The app's link is\n/invite/<token>."
+          }
+        },
+        "required": [
+          "status",
+          "member",
+          "invitation",
+          "token"
+        ]
+      },
+      "InviteLinkDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "invitation": {
+            "$ref": "#/components/schemas/InvitationDto"
+          }
+        },
+        "required": [
+          "token",
+          "invitation"
+        ]
+      },
+      "AcceptInviteDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "InvitePreviewDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemberRole"
+              }
+            ]
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "invitedByName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Who invited them (null once that account is deleted)."
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "projectName",
+          "invitedByName",
+          "expiresAt"
+        ]
+      },
+      "AcceptedInviteDto": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string"
+          },
+          "alreadyMember": {
+            "type": "boolean",
+            "description": "They were in it already: nothing changed, and the link was left for the person it is for."
+          }
+        },
+        "required": [
+          "projectId",
+          "alreadyMember"
         ]
       },
       "TaskDto": {

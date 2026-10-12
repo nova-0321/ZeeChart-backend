@@ -41,6 +41,12 @@ export interface TaskState {
   parentId: string | null;
   /** Only on a deleted task's last state: the links that went with it. */
   links?: LinkState[];
+  /**
+   * Only on a recorded move: its place in its list then (0 first, among the tasks of its group or
+   * of the top level). An undo or redo puts the task back at that place among the tasks there now,
+   * without writing anyone else's place (their own moves since are kept).
+   */
+  place?: number;
 }
 
 export interface EventState {
@@ -165,12 +171,26 @@ function projectSentence(
   return text;
 }
 
+/** A task's place in its list in a snapshot: 0 first, among the tasks with the same parent. */
+function placeIn(snapshot: Snapshot, task: TaskState): number {
+  const level = [...snapshot.tasks.values()]
+    .filter((other) => other.parentId === task.parentId)
+    .sort((a, b) => a.order - b.order || (a.id < b.id ? -1 : 1));
+  return level.findIndex((other) => other.id === task.id);
+}
+
 /**
  * The revisions between two snapshots of one project. `target`: the row the request was about;
- * a change of only its place in the list (`order`) is recorded for it alone, not for the rows
- * renumbered around it.
+ * `placed`: rows put back at a place by an undo or redo. A change of only a row's place in the list
+ * (`order`) is recorded for those alone, not for the rows renumbered around them (that is part of
+ * the move). A recorded move carries the task's place in its list before and after (see place).
  */
-export function diffSnapshots(before: Snapshot, after: Snapshot, target?: string): RevisionDraft[] {
+export function diffSnapshots(
+  before: Snapshot,
+  after: Snapshot,
+  target?: string,
+  placed?: ReadonlySet<string>,
+): RevisionDraft[] {
   const drafts: RevisionDraft[] = [];
   // Names of tasks, now or before (a group that was deleted in the same request).
   const nameOf = (id: string) => after.tasks.get(id)?.name ?? before.tasks.get(id)?.name;
@@ -204,13 +224,16 @@ export function diffSnapshots(before: Snapshot, after: Snapshot, target?: string
       continue;
     }
     const fields: string[] = changed(was, now, TASK_FIELDS);
-    if (fields.length === 0 && !(id === target && was.order !== now.order)) continue;
+    const named = id === target || placed?.has(id) === true;
+    const moved = was.order !== now.order || was.parentId !== now.parentId;
+    if (fields.length === 0 && !(named && was.order !== now.order)) continue;
     drafts.push({
       entityType: 'task',
       entityId: id,
       action: 'update',
-      before: was,
-      after: now,
+      // A move of the row the request was about: where it was, and where it went.
+      before: named && moved ? { ...was, place: placeIn(before, was) } : was,
+      after: named && moved ? { ...now, place: placeIn(after, now) } : now,
       summary: taskSentence(was, now, fields, nameOf),
     });
   }

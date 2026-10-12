@@ -31,6 +31,8 @@ export type BatchKind = (typeof BATCH_KINDS)[number];
 @Unique('UQ_revisions_entity_version', ['entityId', 'version'])
 @Index('IDX_revisions_project_created', ['projectId', 'createdAt'])
 @Index('IDX_revisions_project_author', ['projectId', 'changedById', 'createdAt'])
+// Undo and redo read a batch by its id. (A row's versions are found through the unique rule.)
+@Index('IDX_revisions_batchId', ['batchId'])
 export class Revision {
   @PrimaryGeneratedColumn('uuid')
   id: string;

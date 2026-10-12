@@ -4,7 +4,7 @@ import { isUUID } from 'class-validator';
 
 /** What changed. */
 export type RealtimeEntity =
-  'project' | 'task' | 'dependency' | 'event' | 'member' | 'revision' | 'version';
+  'project' | 'task' | 'dependency' | 'event' | 'member' | 'invitation' | 'revision' | 'version';
 
 /**
  * How it changed. `resync`: a request failed part-way (5xx) and may have saved some of its work,

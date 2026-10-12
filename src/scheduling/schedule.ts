@@ -138,6 +138,10 @@ class Network {
     return this.incoming.get(id) ?? [];
   }
 
+  typeOf(id: string): string | undefined {
+    return this.tasks.get(id)?.type;
+  }
+
   parentOf(id: string): string | null {
     return this.tasks.get(id)?.parentId ?? null;
   }
@@ -173,6 +177,17 @@ class Network {
           );
         }
       }
+    }
+  }
+
+  /**
+   * After a group shrank (a task left it): the links into it, and into the groups above it, are
+   * looked at again. A group now ending (or starting) before a link into it allows is pushed later
+   * with its tasks, as any successor is (see settle).
+   */
+  recheckLinksInto(groupId: string) {
+    for (const group of [groupId, ...this.ancestorsOf(groupId)]) {
+      for (const link of this.incomingOf(group)) this.queue.push(link.fromTaskId);
     }
   }
 
@@ -236,16 +251,26 @@ class Network {
 
   /** Push every successor of the queued tasks later until all links hold. */
   settle() {
+    // A loop pushes the same task again and again, so it is caught by counting how often each one
+    // is pushed: more often than there are tasks and links can only be a loop (a big project only
+    // has many tasks to push, each a few times). Caught early, before the queue grows large.
+    let links = 0;
+    for (const out of this.outgoing.values()) links += out.length;
+    const perTask = this.tasks.size + links + 1;
+    const pushes = new Map<string, number>();
+    const loop = () =>
+      new ScheduleError(
+        'These links cannot all be kept: the tasks would keep pushing each other later.',
+      );
     for (let guard = 0; this.queue.length > 0; guard++) {
-      if (guard > 5_000) {
-        throw new ScheduleError(
-          'These links cannot all be kept: the tasks would keep pushing each other later.',
-        );
-      }
+      if (guard > 50 * perTask + 5_000) throw loop();
       const id = this.queue.pop()!;
       for (const link of this.outgoing.get(id) ?? []) {
         const days = shortfall(link, this.span(id), this.span(link.toTaskId));
         if (days > 0) {
+          const count = (pushes.get(link.toTaskId) ?? 0) + 1;
+          if (count > perTask) throw loop();
+          pushes.set(link.toTaskId, count);
           const moved = this.block(link.toTaskId);
           this.shift(moved, days);
           this.fitAncestors(link.toTaskId);
@@ -312,6 +337,35 @@ export function planAttach(
   if (oldParentId && oldParentId !== network.parentOf(id)) {
     network.fitGroup(oldParentId);
     network.fitAncestors(oldParentId);
+    network.recheckLinksInto(oldParentId);
+  }
+  network.settle();
+  return network.changes();
+}
+
+/**
+ * After rows were written back as they once were (an undo or redo): each listed group fits its
+ * tasks again (and keeps the links into it), and links are kept around the written tasks, both what
+ * follows them and what they follow (a link someone added into one since). One network for all.
+ */
+export function planSettle(
+  tasks: ScheduleTask[],
+  links: ScheduleLink[],
+  groupIds: Iterable<string>,
+  written: Iterable<string>,
+): Map<string, DatedChange> {
+  const network = new Network(tasks, links);
+  const present = new Set(tasks.map((task) => task.id));
+  for (const groupId of groupIds) {
+    if (!present.has(groupId) || network.typeOf(groupId) !== 'group') continue;
+    network.fitGroup(groupId);
+    network.fitAncestors(groupId);
+    network.recheckLinksInto(groupId);
+  }
+  for (const id of written) {
+    if (!present.has(id)) continue;
+    network.enqueue(id);
+    for (const link of network.incomingOf(id)) network.enqueue(link.fromTaskId);
   }
   network.settle();
   return network.changes();
@@ -326,6 +380,7 @@ export function planRefit(
   const network = new Network(tasks, links);
   network.fitGroup(groupId);
   network.fitAncestors(groupId);
+  network.recheckLinksInto(groupId);
   network.settle();
   return network.changes();
 }

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, type EntityManager, Repository } from 'typeorm';
 import { roleIn } from '../projects/project-access.js';
 import { TaskScheduler } from '../scheduling/task-scheduler.service.js';
 import type { UndoStepDto as UndoStep } from './dto/undo.dto.js';
@@ -60,7 +60,7 @@ export class UndoService {
   }
 
   /** Reverts the person's last change. Answers what it undid (for the history: `of` the batch). */
-  async undo(projectId: string, userId: string): Promise<UndoStep> {
+  async undo(projectId: string, userId: string): Promise<Applied> {
     const { done } = await this.stacks(projectId, userId);
     const batchId = done.at(-1);
     if (!batchId) throw new ConflictException('Nothing to undo');
@@ -68,7 +68,7 @@ export class UndoService {
   }
 
   /** Puts back what the person's last undo reverted. */
-  async redo(projectId: string, userId: string): Promise<UndoStep> {
+  async redo(projectId: string, userId: string): Promise<Applied> {
     const { undone } = await this.stacks(projectId, userId);
     const batchId = undone.at(-1);
     if (!batchId) throw new ConflictException('Nothing to redo');
@@ -124,7 +124,7 @@ export class UndoService {
     userId: string,
     batchId: string,
     direction: 'undo' | 'redo',
-  ): Promise<UndoStep> {
+  ): Promise<Applied> {
     const revisions = await this.revisionRepo.find({ where: { batchId, projectId } });
     if (revisions.length === 0) throw new NotFoundException('Not found');
     if (
@@ -150,11 +150,53 @@ export class UndoService {
         `Can't ${direction}: ${name ? `“${name}”` : 'something it changed'} was changed since`,
       );
     }
+    // A task it would remove that others have since put tasks in, or linked: removing it would
+    // take their work with it (links go, tasks leave the group). Refused instead.
+    const inBatch = new Set(steps.map(({ revision }) => revision.entityId));
+    for (const { revision, wanted } of steps) {
+      if (revision.entityType !== 'task' || wanted) continue;
+      const id = revision.entityId;
+      const theirs =
+        [...now.tasks.values()].some((task) => task.parentId === id && !inBatch.has(task.id)) ||
+        now.links.some(
+          (link) =>
+            (link.fromTaskId === id || link.toTaskId === id) && !(link.id && inBatch.has(link.id)),
+        );
+      if (theirs) {
+        const name = now.tasks.get(id)?.name;
+        throw new ConflictException(
+          `Can't ${direction}: ${name ? `“${name}”` : 'a task it removes'} has tasks or links added since`,
+        );
+      }
+    }
 
+    // The groups and the list levels (a group's tasks, or the top level) it touches.
+    const groups = new Set<string>();
+    const levels = new Set<string | null>();
+    for (const { revision, expected, wanted } of steps) {
+      if (revision.entityType !== 'task') continue;
+      for (const state of [expected, wanted] as (TaskState | null)[]) {
+        if (!state) continue;
+        if (state.parentId) groups.add(state.parentId);
+        levels.add(state.parentId);
+      }
+      if ((wanted as TaskState | null)?.type === 'group') groups.add(revision.entityId);
+    }
+
+    const placed: string[] = [];
     await this.db.transaction(async (manager) => {
       for (const { revision, wanted } of steps) {
         if (revision.entityType === 'project' && wanted) {
           const project = wanted as ProjectState;
+          // Its name back only if none of its owners has another project called that since.
+          if (
+            project.name !== now.project?.name &&
+            (await ownersHaveName(manager, projectId, project.name))
+          ) {
+            throw new ConflictException(
+              `Can't ${direction}: an owner of this project has another one called “${project.name}” now`,
+            );
+          }
           await manager.query(
             `UPDATE "projects" SET "name" = $2, "description" = $3, "archived" = $4 WHERE "id" = $1`,
             [projectId, project.name, project.description, project.archived],
@@ -172,8 +214,26 @@ export class UndoService {
       const tasks = steps.flatMap(({ revision, wanted }) =>
         revision.entityType === 'task' && wanted ? [wanted as TaskState] : [],
       );
-      for (const task of tasks) await writeTask(manager, projectId, task);
+      // A task's place in its list is only put back for a move this batch made (see place); any
+      // other task keeps the place it has now, so a move someone made since is kept.
+      for (const task of tasks) {
+        const current = now.tasks.get(task.id);
+        const order = task.place === undefined && current ? current.order : task.order;
+        await writeTask(manager, projectId, { ...task, order });
+      }
       for (const task of tasks) await setTaskParent(manager, task.id, task.parentId);
+      // Its group gone meanwhile (setTaskParent leaves it at the top level then): refused, rather
+      // than done differently from what it says.
+      for (const task of tasks) {
+        if (!task.parentId) continue;
+        const [row] = await manager.query<{ parentId: string | null }[]>(
+          `SELECT "parentId" FROM "tasks" WHERE "id" = $1`,
+          [task.id],
+        );
+        if (row?.parentId !== task.parentId) {
+          throw new ConflictException(`Can't ${direction}: the group of “${task.name}” is gone`);
+        }
+      }
       for (const { revision, wanted } of steps) {
         if (revision.entityType === 'event' && wanted) {
           await writeEvent(manager, projectId, wanted as EventState);
@@ -186,26 +246,29 @@ export class UndoService {
       for (const task of tasks) {
         for (const link of task.links ?? []) await writeLink(manager, projectId, link);
       }
-    });
-    // The groups it touched fit their tasks again: a task someone else put in a group since is
-    // still in it, and the group must cover it (a group is the span of its tasks).
-    const groups = new Set<string>();
-    for (const { revision, expected, wanted } of steps) {
-      if (revision.entityType !== 'task') continue;
-      for (const state of [expected, wanted] as (TaskState | null)[]) {
-        if (state?.parentId) groups.add(state.parentId);
+      // Others may have changed the groups since: never leave a task under a missing or plain task,
+      // or a group inside itself (that would also loop the scheduler forever).
+      await assertTreeHolds(manager, projectId, direction);
+      // A task this batch moved goes back to its place among the tasks there now (the others keep
+      // their order); then any two on the same place (a task made again) are numbered again.
+      for (const task of tasks) {
+        if (task.place === undefined) continue;
+        await putAtPlace(manager, projectId, task.id, task.parentId, task.place);
+        placed.push(task.id);
       }
-      if ((wanted as TaskState | null)?.type === 'group') groups.add(revision.entityId);
-    }
-    for (const groupId of groups) {
-      const there = await this.db.query<unknown[]>(
-        `SELECT 1 FROM "tasks" WHERE "id" = $1 AND "type" = 'group'`,
-        [groupId],
+      await renumberClashes(manager, projectId, levels, new Set(tasks.map((task) => task.id)));
+      // The groups it touched fit their tasks again (a task someone else put in a group since is
+      // still in it, and the group must cover it), and links push what follows the written tasks.
+      // In the same transaction: all of it, or none.
+      await this.scheduler.settle(
+        manager,
+        projectId,
+        groups,
+        tasks.map((task) => task.id),
       );
-      if (there.length > 0) await this.scheduler.refitGroup(projectId, groupId);
-    }
+    });
     const main = steps.find((step) => step.revision.primary) ?? steps[0]!;
-    return { batchId, summary: plain(main.revision.summary) };
+    return { step: { batchId, summary: plain(main.revision.summary) }, placed };
   }
 }
 
@@ -249,3 +312,108 @@ function matches(type: Revision['entityType'], expected: Row | null, current: Ro
 
 /** What a change did, without the "Undo: " / "Redo: " an undone or redone batch is noted with. */
 const plain = (summary: string) => summary.replace(/^(Undo|Redo): /, '');
+
+/**
+ * Every task's group is a group of the same project, and no group is inside itself. 409 (and
+ * the caller's transaction is undone) otherwise.
+ */
+async function assertTreeHolds(
+  manager: EntityManager,
+  projectId: string,
+  direction: 'undo' | 'redo',
+) {
+  const rows = await manager.query<{ id: string; parentId: string | null; type: string }[]>(
+    `SELECT "id", "parentId", "type" FROM "tasks" WHERE "projectId" = $1`,
+    [projectId],
+  );
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const refuse = () => new ConflictException(`Can't ${direction}: the groups were changed since`);
+  for (const row of rows) {
+    if (!row.parentId) continue;
+    if (byId.get(row.parentId)?.type !== 'group') throw refuse();
+    // Up the chain: back at this task means a loop. (Bounded: a chain can't be longer than this.)
+    let at: string | null = row.parentId;
+    for (let steps = 0; at; steps++) {
+      if (at === row.id || steps > rows.length) throw refuse();
+      at = byId.get(at)?.parentId ?? null;
+    }
+  }
+}
+
+/**
+ * In each list level (a group's tasks, or the top level: null), rows on the same place are
+ * numbered again from 1, in their order, the ones in `first` before the others on the same place.
+ * Levels with no clash are left as they are.
+ */
+async function renumberClashes(
+  manager: EntityManager,
+  projectId: string,
+  levels: Set<string | null>,
+  first: Set<string>,
+) {
+  for (const parentId of levels) {
+    const rows = await manager.query<{ id: string; order: number }[]>(
+      `SELECT "id", "order" FROM "tasks"
+        WHERE "projectId" = $1 AND "parentId" IS NOT DISTINCT FROM $2::uuid`,
+      [projectId, parentId],
+    );
+    if (new Set(rows.map((row) => row.order)).size === rows.length) continue;
+    rows.sort(
+      (a, b) =>
+        a.order - b.order ||
+        Number(first.has(b.id)) - Number(first.has(a.id)) ||
+        (a.id < b.id ? -1 : 1),
+    );
+    for (const [index, row] of rows.entries()) {
+      if (row.order !== index + 1) {
+        await manager.query(`UPDATE "tasks" SET "order" = $2 WHERE "id" = $1`, [row.id, index + 1]);
+      }
+    }
+  }
+}
+
+/** What an undo or redo did, and the tasks it put back at a place (their moves are recorded). */
+export interface Applied {
+  step: UndoStep;
+  placed: string[];
+}
+
+/**
+ * Puts a task at `place` (0 first) among the tasks of its list (`parentId`; null: the top level)
+ * as they are now, the others keeping their order; the list is numbered from 1 again.
+ */
+async function putAtPlace(
+  manager: EntityManager,
+  projectId: string,
+  taskId: string,
+  parentId: string | null,
+  place: number,
+) {
+  const rows = await manager.query<{ id: string; order: number }[]>(
+    `SELECT "id", "order" FROM "tasks"
+      WHERE "projectId" = $1 AND "parentId" IS NOT DISTINCT FROM $2::uuid AND "id" <> $3
+      ORDER BY "order", "id"`,
+    [projectId, parentId, taskId],
+  );
+  const level = rows.map((row) => row.id);
+  level.splice(Math.min(Math.max(place, 0), level.length), 0, taskId);
+  const was = new Map(rows.map((row) => [row.id, row.order]));
+  for (const [index, id] of level.entries()) {
+    if (was.get(id) !== index + 1) {
+      await manager.query(`UPDATE "tasks" SET "order" = $2 WHERE "id" = $1`, [id, index + 1]);
+    }
+  }
+}
+
+/** Whether an owner of the project owns another project called `name`. */
+async function ownersHaveName(manager: EntityManager, projectId: string, name: string) {
+  const rows = await manager.query<unknown[]>(
+    `SELECT 1 FROM "projects" o
+       JOIN "members" om ON om."projectId" = o."id" AND om."role" = 'owner'
+      WHERE o."id" <> $1 AND o."name" = $2
+        AND om."userId" IN (SELECT "userId" FROM "members" WHERE "projectId" = $1 AND "role" = 'owner')
+      LIMIT 1`,
+    [projectId, name],
+  );
+  return rows.length > 0;
+}

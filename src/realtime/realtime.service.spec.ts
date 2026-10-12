@@ -25,15 +25,21 @@ describe('RealtimeService', () => {
 
   it('sends to the project room, skipping the sender', () => {
     const { server, to, except, emit } = fakeServer();
-    new RealtimeService({ server } as unknown as RealtimeGateway).notify(message, ID);
+    new RealtimeService({ server } as unknown as RealtimeGateway).notify(message, {
+      userId: 'u1',
+      clientId: ID,
+    });
     expect(to).toHaveBeenCalledWith(`project:${ID}`);
-    expect(except).toHaveBeenCalledWith(`client:${ID}`);
+    expect(except).toHaveBeenCalledWith(`client:u1:${ID}`);
     expect(emit).toHaveBeenCalledWith('changed', message);
   });
 
   it('without a valid sender id it sends to the whole room', () => {
     const { server, except, emit } = fakeServer();
-    new RealtimeService({ server } as unknown as RealtimeGateway).notify(message, 'junk');
+    new RealtimeService({ server } as unknown as RealtimeGateway).notify(message, {
+      userId: 'u1',
+      clientId: 'junk',
+    });
     expect(except).not.toHaveBeenCalled();
     expect(emit).toHaveBeenCalledWith('changed', message);
   });

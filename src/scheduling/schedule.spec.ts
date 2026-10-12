@@ -3,6 +3,7 @@ import {
   planAttach,
   planEdit,
   planRefit,
+  planSettle,
   planReschedule,
   ScheduleError,
   type ScheduleLink,
@@ -261,6 +262,41 @@ describe('planAttach', () => {
     expect(dates(planRefit(tasks, [], 'g'), 'g')).toBe('2026-01-01..2026-01-10');
     const empty = [task('e', '2026-01-01', '2026-03-05', { type: 'group' })];
     expect(planRefit(empty, [], 'e').size).toBe(0);
+  });
+
+  it('settling a written-back task keeps a link into it (added since): the task is pushed', () => {
+    // An undo puts t back on the 1st; since then p -> t (FS) was added, p ending on the 5th.
+    const tasks = [task('p', '2026-01-01', '2026-01-05'), task('t', '2026-01-01', '2026-01-03')];
+    const changes = planSettle(tasks, [link('p', 't')], [], ['t']);
+    expect(dates(changes, 't')).toBe('2026-01-06..2026-01-08');
+    expect(dates(changes, 'p')).toBeUndefined();
+  });
+
+  it('a loop of links is refused quickly, however big the project', () => {
+    const many = Array.from({ length: 2000 }, (_, i) => task(`x${i}`, '2026-01-01', '2026-01-02'));
+    const tasks = [
+      task('a', '2026-01-01', '2026-01-02'),
+      task('b', '2026-01-01', '2026-01-02'),
+      ...many,
+    ];
+    const started = Date.now();
+    expect(() => planReschedule(tasks, [link('a', 'b'), link('b', 'a')], ['a'])).toThrow(
+      ScheduleError,
+    );
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it('a group that shrank keeps a link into it: pushed later with its tasks (FF)', () => {
+    // a ends on the 15th; the group must finish no earlier (FF). Its task that ended on the 20th
+    // was removed: what is left ends on the 10th, so the group goes 5 days later with its task.
+    const tasks = [
+      task('a', '2026-01-05', '2026-01-15'),
+      task('g', '2026-01-01', '2026-01-20', { type: 'group' }),
+      task('c1', '2026-01-01', '2026-01-10', { parentId: 'g' }),
+    ];
+    const changes = planRefit(tasks, [link('a', 'g', 'FF')], 'g');
+    expect(dates(changes, 'g')).toBe('2026-01-06..2026-01-15');
+    expect(dates(changes, 'c1')).toBe('2026-01-06..2026-01-15');
   });
 
   it('stretches every group above, and pushes what follows a stretched group', () => {

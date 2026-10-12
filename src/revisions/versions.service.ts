@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, type EntityManager, Repository } from 'typeorm';
 import type { MyProjectDto } from '../projects/dto/my-project.dto.js';
 import { roleIn } from '../projects/project-access.js';
-import { ProjectsService } from '../projects/projects.service.js';
+import { assertNameFree, ProjectsService } from '../projects/projects.service.js';
 import { asVersionDto, type VersionDto, type VersionSummaryDto } from './dto/version.dto.js';
 import { ProjectVersion, type VersionKind } from './entities/project-version.entity.js';
 import type { Snapshot } from './revision-diff.js';
@@ -109,15 +109,22 @@ export class VersionsService {
    */
   async autoSave(projectId: string, after: Snapshot, userId: string | null): Promise<void> {
     if (!after.project) return;
-    const latest = await this.versionRepo.findOne({
-      where: { projectId },
-      order: { number: 'DESC' },
-    });
+    // Its number, age and size first: the whole content is read only when a version is due.
+    const [head] = await this.db.query<{ number: number; due: boolean; tasks: number }[]>(
+      `SELECT "number", now() - "createdAt" >= make_interval(secs => $2) AS "due",
+              jsonb_array_length("content"->'tasks')::int AS "tasks"
+         FROM "project_versions" WHERE "projectId" = $1 ORDER BY "number" DESC LIMIT 1`,
+      [projectId, AUTO_EVERY_MS / 1000],
+    );
     // Not too often; but the first change of a new project is kept at once (its v1 is empty, so
-    // otherwise the history would show nothing of the work for its first 10 minutes).
-    const fresh = latest?.number === 1 && latest.content.tasks.length === 0;
-    if (latest && !fresh && Date.now() - latest.createdAt.getTime() < AUTO_EVERY_MS) return;
+    // otherwise the history would show nothing of the work for its first 10 minutes). The age is
+    // worked out by the database (whatever time zone this server runs in).
+    const fresh = head?.number === 1 && head.tasks === 0;
+    if (head && !fresh && !head.due) return;
     const content = contentOf({ ...after, project: after.project });
+    const latest = head
+      ? await this.versionRepo.findOne({ where: { projectId }, order: { number: 'DESC' } })
+      : null;
     if (latest && sameContent(latest.content, content)) return;
     await this.save(projectId, 'auto', content, userId);
   }
@@ -178,6 +185,19 @@ export class VersionsService {
       userId,
     );
     const ids = new Map(content.tasks.map((task) => [task.id, randomUUID()]));
+    // The project exists from here; if filling it fails, it goes again (no empty copy is left).
+    try {
+      await this.fill(project.id, content, ids);
+    } catch (error) {
+      await this.db.query(`DELETE FROM "projects" WHERE "id" = $1`, [project.id]);
+      throw error;
+    }
+    return project;
+  }
+
+  /** Copies a version's tasks, events and links into a new project (see `copy`), with new ids. */
+  private async fill(projectId: string, content: VersionContent, ids: Map<string, string>) {
+    const project = { id: projectId };
     await this.db.transaction(async (manager) => {
       for (const task of content.tasks) {
         await writeTask(manager, project.id, { ...task, id: ids.get(task.id)! });
@@ -210,14 +230,13 @@ export class VersionsService {
         { content: contentOf({ ...made, project: made.project! }) },
       );
     });
-    return project;
   }
 
-  /** `base`, or `base 2`, `base 3`...: the first that none of your projects is called. */
+  /** `base`, or `base 2`, `base 3`...: the first that none of the projects you own is called. */
   private async freeName(userId: string, base: string) {
     const rows = await this.db.query<{ name: string }[]>(
       `SELECT p."name" FROM "projects" p JOIN "members" m ON m."projectId" = p."id"
-        WHERE m."userId" = $1 AND (p."name" = $2 OR p."name" LIKE $3)`,
+        WHERE m."userId" = $1 AND m."role" = 'owner' AND (p."name" = $2 OR p."name" LIKE $3)`,
       [userId, base, `${base} %`],
     );
     const taken = new Set(rows.map((row) => row.name));
@@ -253,17 +272,24 @@ export class VersionsService {
     for (const event of content.events) await writeEvent(manager, projectId, event);
     for (const link of content.links) await writeLink(manager, projectId, link);
     if (withProjectFields) {
-      // The name only when none of the owner's other projects took it meanwhile (names are unique
-      // among one's projects: see ProjectsService).
+      // The name only when no owner of it owns another project of that name now (names are unique
+      // among the projects one owns: see assertNameFree); otherwise it keeps the name it has.
+      let nameFree = true;
+      const owners = await manager.query<{ userId: string }[]>(
+        `SELECT "userId" FROM "members" WHERE "projectId" = $1 AND "role" = 'owner' ORDER BY "userId"`,
+        [projectId],
+      );
+      for (const owner of owners) {
+        try {
+          await assertNameFree(manager, owner.userId, content.project.name, projectId);
+        } catch {
+          nameFree = false;
+        }
+      }
       await manager.query(
-        `UPDATE "projects" p SET "description" = $2,
-                "name" = CASE WHEN EXISTS (
-                  SELECT 1 FROM "projects" o JOIN "members" m ON m."projectId" = o."id"
-                   WHERE o."id" <> p."id" AND o."name" = $3
-                     AND m."userId" IN (SELECT "userId" FROM "members" WHERE "projectId" = p."id"))
-                  THEN p."name" ELSE $3 END
-          WHERE p."id" = $1`,
-        [projectId, content.project.description, content.project.name],
+        `UPDATE "projects" SET "description" = $2, "name" = CASE WHEN $4 THEN $3 ELSE "name" END
+          WHERE "id" = $1`,
+        [projectId, content.project.description, content.project.name, nameFree],
       );
     }
   }

@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { NoBroadcast } from '../realtime/broadcast.decorator.js';
 import { AuthGuard, type AuthedRequest } from './auth.guard.js';
@@ -15,6 +16,7 @@ export class AuthController {
 
   /** Make an account and sign in. 409 when the email already has one. */
   @Post('signup')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @NoBroadcast('changes no project')
   signUp(@Body() dto: SignUpDto): Promise<AuthResponseDto> {
     return this.auth.signUp(dto);
@@ -22,6 +24,8 @@ export class AuthController {
 
   /** Sign in. 401 for a wrong email or password (the same message for both). */
   @Post('signin')
+  // Guessing passwords: a few tries a minute per address.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @NoBroadcast('changes nothing')
   @HttpCode(HttpStatus.OK)
   signIn(@Body() dto: SignInDto): Promise<AuthResponseDto> {

@@ -24,7 +24,7 @@ export class ProjectsService {
   /** A new project; whoever makes it is its first owner. */
   create(createProjectDto: CreateProjectDto, userId: string): Promise<MyProjectDto> {
     return this.db.transaction(async (manager) => {
-      await this.assertNameFree(manager, userId, createProjectDto.name);
+      await assertNameFree(manager, userId, createProjectDto.name);
       // Version 1: its first revision ("Created project") is written below, with the same number.
       const project = await manager.save(
         manager.create(Project, { ...createProjectDto, version: 1 }),
@@ -96,7 +96,23 @@ export class ProjectsService {
       if (!project) throw new NotFoundException(`Project ${id} not found`);
       const { name } = updateProjectDto;
       if (name !== undefined && name !== project.name) {
-        await this.assertNameFree(manager, userId, name, id);
+        // Not only the one renaming it: every owner of it, so none ends up owning two of a name.
+        const owners = await manager.find(Member, {
+          select: { userId: true },
+          where: { projectId: id, role: 'owner' },
+          order: { userId: 'ASC' },
+        });
+        for (const owner of owners) {
+          await assertNameFree(
+            manager,
+            owner.userId,
+            name,
+            id,
+            owner.userId === userId
+              ? undefined
+              : 'Another owner of this project already has a project with this name',
+          );
+        }
       }
       await manager.save(manager.merge(Project, project, updateProjectDto));
     });
@@ -124,25 +140,29 @@ export class ProjectsService {
     if (!affected) throw new NotFoundException(`Project ${id} not found`);
     return this.findOne(id, userId);
   }
+}
 
-  /**
-   * 409 when one of the projects `userId` belongs to (other than `exceptId`) already has this name.
-   * Holds a lock on the user until the transaction ends, so two requests at once can't both pass.
-   */
-  private async assertNameFree(
-    manager: EntityManager,
-    userId: string,
-    name: string,
-    exceptId?: string,
-  ) {
-    await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`project-names:${userId}`]);
-    const taken = await manager.exists(Member, {
-      where: {
-        userId,
-        project: { name, ...(exceptId ? { id: Not(exceptId) } : {}) },
-      },
-      relations: { project: true, addedBy: true },
-    });
-    if (taken) throw new ConflictException('You already have a project with this name');
-  }
+/**
+ * 409 when one of the projects `userId` owns (other than `exceptId`) already has this name: names
+ * are unique among the projects one owns (one shared with them may have any name; their list tells
+ * it apart by who invited them). Holds a lock on the user until the transaction ends, so two
+ * requests at once can't both pass. Also used when someone becomes an owner (MembersService).
+ */
+export async function assertNameFree(
+  manager: EntityManager,
+  userId: string,
+  name: string,
+  exceptId?: string,
+  message = 'You already have a project with this name',
+) {
+  await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`project-names:${userId}`]);
+  const taken = await manager.exists(Member, {
+    where: {
+      userId,
+      role: 'owner',
+      project: { name, ...(exceptId ? { id: Not(exceptId) } : {}) },
+    },
+    relations: { project: true },
+  });
+  if (taken) throw new ConflictException(message);
 }

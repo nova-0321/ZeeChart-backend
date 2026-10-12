@@ -5,6 +5,7 @@ import {
   planAttach,
   planEdit,
   planRefit,
+  planSettle,
   planReschedule,
   ScheduleError,
   type DatedChange,
@@ -113,6 +114,27 @@ export class TaskScheduler {
       const { tasks, links } = await this.load(projectId, manager);
       await this.saveChanges(manager, planReschedule(tasks, links, [fromTaskId]));
     });
+  }
+
+  /**
+   * After rows were written back as they once were (an undo or redo), inside the caller's
+   * transaction so it is all or nothing with what it wrote: each listed group fits its tasks
+   * again, and links are kept around the written tasks: what follows them is pushed, and so are they
+   * when a link into one (added since) needs it (see planSettle). A 400 when they can't all be kept.
+   */
+  async settle(
+    manager: EntityManager,
+    projectId: string,
+    groupIds: Iterable<string>,
+    writtenTaskIds: Iterable<string>,
+  ): Promise<void> {
+    const { tasks, links } = await this.load(projectId, manager);
+    try {
+      await this.saveChanges(manager, planSettle(tasks, links, groupIds, writtenTaskIds));
+    } catch (error) {
+      if (error instanceof ScheduleError) throw new BadRequestException(error.message);
+      throw error;
+    }
   }
 
   private async load(projectId: string, manager: EntityManager = this.taskRepo.manager) {

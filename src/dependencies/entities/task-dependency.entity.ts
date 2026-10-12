@@ -1,4 +1,5 @@
 import {
+  Index,
   Column,
   CreateDateColumn,
   Entity,
@@ -12,6 +13,9 @@ import { Task } from '../../tasks/entities/task.entity.js';
 
 /** "fromTask must happen before toTask": an arrow between two bars of the same project. */
 @Entity('task_dependencies')
+// By project (every load), and by the task a link points to (the unique rule covers the other end).
+@Index('IDX_task_dependencies_projectId', ['projectId'])
+@Index('IDX_task_dependencies_toTaskId', ['toTaskId'])
 @Unique(['fromTaskId', 'toTaskId'])
 export class TaskDependency {
   @PrimaryGeneratedColumn('uuid')

@@ -107,7 +107,9 @@ describe('AuthService', () => {
 
 describe('AuthGuard', () => {
   const jwt = new JwtService({ secret: SECRET, signOptions: { expiresIn: '1h' } });
-  const guard = new AuthGuard(jwt);
+  // The account of a valid token exists (one query answering a row).
+  const db = { query: vi.fn().mockResolvedValue([{}]) };
+  const guard = new AuthGuard(jwt, db as never);
   const contextWith = (authorization?: string) => {
     const request: { headers: { authorization?: string }; userId?: string } = {
       headers: { authorization },
@@ -122,6 +124,12 @@ describe('AuthGuard', () => {
     const { request, context } = contextWith(`Bearer ${await jwt.signAsync({ sub: 'u1' })}`);
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(request.userId).toBe('u1');
+  });
+
+  it('refuses a valid token whose account is gone (401, not an error later on)', async () => {
+    db.query.mockResolvedValueOnce([]);
+    const { context } = contextWith(`Bearer ${await jwt.signAsync({ sub: 'gone' })}`);
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('refuses no token, another scheme, a forged token and an expired one', async () => {

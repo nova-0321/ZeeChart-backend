@@ -1,7 +1,8 @@
 import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { envValidationSchema } from './config/env.validation.js';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -25,6 +26,16 @@ import { DatabaseModule } from './database/database.module.js';
       // confusing connection error later.
       validationSchema: envValidationSchema,
     }),
+    // Requests per address per minute: plenty for the app, a stop to hammering (signing in,
+    // invite links and invites have tighter limits of their own: see @Throttle). Off in tests,
+    // which sign up many accounts at once.
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [{ name: 'default', ttl: 60_000, limit: 600 }],
+        skipIf: () => config.get<string>('NODE_ENV') === 'test',
+      }),
+    }),
     DatabaseModule,
     AuthModule,
     HealthModule,
@@ -43,6 +54,7 @@ import { DatabaseModule } from './database/database.module.js';
     AppService,
     // Registered here (not in main.ts) so the filter can inject HttpAdapterHost.
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule implements NestModule {

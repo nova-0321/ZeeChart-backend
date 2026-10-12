@@ -86,9 +86,8 @@ export class BroadcastInterceptor implements NestInterceptor {
   /** After the answer has gone out: sending never delays it. */
   private send(message: ChangeMessage, sender: string | undefined, userId: string | undefined) {
     setImmediate(() => {
-      // A tab is skipped only when it is the requester's own: an id copied from someone else's tab
-      // (presence shows them) must not keep that person from hearing of the change.
-      void this.realtime.clientOf(sender, userId).then((own) => this.realtime.notify(message, own));
+      // Only the requester's own tab is skipped: the room is under their user (see clientRoom).
+      this.realtime.notify(message, { userId, clientId: sender });
     });
   }
 }
