@@ -47,7 +47,8 @@ export class ProjectVersionsController {
 
   /** "Save a version now": the project as it is. */
   @Post()
-  @ProjectAccess('editor', projectInParam())
+  // Saving a version records the plan as it is: allowed on an archived project.
+  @ProjectAccess('editor', projectInParam(), { whileArchived: true })
   @Broadcast({ entity: 'version', action: 'create', project: projectInParam() })
   save(
     @Param('id', ParseUUIDPipe) projectId: string,
@@ -72,7 +73,7 @@ export class VersionsController {
 
   /** Star a version (or take the star off). */
   @Patch(':id')
-  @ProjectAccess('editor', projectOfRow(ProjectVersion))
+  @ProjectAccess('editor', projectOfRow(ProjectVersion), { whileArchived: true })
   @Broadcast({ entity: 'version', action: 'update', project: projectOfRow(ProjectVersion) })
   star(@Param('id', ParseUUIDPipe) id: string, @Body() dto: StarVersionDto): Promise<VersionDto> {
     return this.versions.star(id, dto.starred);
