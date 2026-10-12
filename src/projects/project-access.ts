@@ -20,6 +20,10 @@ import { type MemberRole, roleCovers } from '../members/member-role.js';
 // creating your own projects). ProjectAccessGuard, after AuthGuard, answers 404 to someone who is
 // not a member, the same as for a project that does not exist, so other people's projects can't
 // even be found; a member whose role is too low gets 403. A test fails for a route with neither mark.
+// An archived project is read-only: a route that needs 'editor' (a change to its tasks, links,
+// events, or undo/redo/restore) gets 403 until an owner reopens it. Owner routes (rename, reopen,
+// delete, members) and reads still work; a few editor routes that change nothing in the plan say so
+// with `whileArchived: true`.
 
 /**
  * Finds the project a request is about. Runs before the handler and its pipes. Answers the project
@@ -34,14 +38,19 @@ export type ProjectLocator = (
 export interface ProjectAccessOptions {
   role: MemberRole;
   project: ProjectLocator;
+  /** An editor route that may run on an archived project (it changes nothing in the plan). */
+  whileArchived?: boolean;
 }
 
 export const PROJECT_ACCESS = 'projects:project-access';
 export const NO_PROJECT_CHECK = 'projects:no-project-check';
 
 /** The route works on the project `project` finds, and needs at least `role` in it. */
-export const ProjectAccess = (role: MemberRole, project: ProjectLocator) =>
-  SetMetadata(PROJECT_ACCESS, { role, project } satisfies ProjectAccessOptions);
+export const ProjectAccess = (
+  role: MemberRole,
+  project: ProjectLocator,
+  options: { whileArchived?: boolean } = {},
+) => SetMetadata(PROJECT_ACCESS, { role, project, ...options } satisfies ProjectAccessOptions);
 /** A route with no single project to check (the reason is for the reader). */
 export const NoProjectCheck = (reason: string) => SetMetadata(NO_PROJECT_CHECK, reason);
 
@@ -96,6 +105,9 @@ const refusal = (needed: MemberRole) =>
     ? 'Only an owner of this project can do this'
     : 'You can only view this project';
 
+/** What anyone changing an archived project is told. */
+export const ARCHIVED_MESSAGE = 'This project is archived. Reopen it to make changes.';
+
 @Injectable()
 export class ProjectAccessGuard implements CanActivate {
   constructor(
@@ -120,9 +132,20 @@ export class ProjectAccessGuard implements CanActivate {
     const role = await roleIn(this.db, projectId, request.userId);
     if (!role) throw new NotFoundException('Not found');
     if (!roleCovers(role, access.role)) throw new ForbiddenException(refusal(access.role));
+    if (access.role === 'editor' && !access.whileArchived && (await isArchived(this.db, projectId)))
+      throw new ForbiddenException(ARCHIVED_MESSAGE);
     return true;
   }
 }
+
+/** Whether the project is archived (read-only). */
+export const isArchived = async (db: DataSource | EntityManager, projectId: string) => {
+  const rows: { archived: boolean }[] = await db.query(
+    'SELECT "archived" FROM "projects" WHERE "id" = $1',
+    [projectId],
+  );
+  return rows[0]?.archived === true;
+};
 
 /** Someone's role in a project, or null when they are not a member. */
 export const roleIn = async (
