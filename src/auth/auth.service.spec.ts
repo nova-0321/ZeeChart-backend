@@ -6,7 +6,8 @@ import { QueryFailedError } from 'typeorm';
 import { AuthGuard } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
 import { User } from './entities/user.entity.js';
-import { hashPassword } from './password.js';
+import { hashPassword, needsRehash, verifyPassword } from './password.js';
+import { hashWith } from '../../test/password-hashes.js';
 
 const SECRET = 'test-secret-at-least-16';
 const ada = { name: 'Ada', email: 'ada@x.io', password: 'pass-word-1' };
@@ -20,6 +21,7 @@ describe('AuthService', () => {
     save: vi.fn(),
     findOne: vi.fn(),
     findOneBy: vi.fn(),
+    update: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -90,6 +92,52 @@ describe('AuthService', () => {
       [wrong, unknown].map((p) => p.catch((error: Error) => error.message)),
     );
     expect(messages[0]).toBe(messages[1]);
+  });
+
+  describe('sign-in moves old password hashes to the current settings', () => {
+    const user = (passwordHash: string) => ({
+      id: 'u1',
+      name: 'Ada',
+      email: ada.email,
+      createdAt: new Date(),
+      passwordHash,
+    });
+
+    it('replaces a hash made with weaker settings, only if it is still the one checked', async () => {
+      const old = await hashWith(ada.password, 16384, 8, 1);
+      repo.findOne.mockResolvedValue(user(old));
+      const result = await service.signIn({ email: ada.email, password: ada.password });
+      await expect(jwt.verifyAsync(result.accessToken)).resolves.toMatchObject({ sub: 'u1' });
+      expect(repo.update).toHaveBeenCalledTimes(1);
+      const [where, set] = repo.update.mock.calls[0] as [
+        { id: string; passwordHash: string },
+        { passwordHash: string },
+      ];
+      expect(where).toEqual({ id: 'u1', passwordHash: old });
+      expect(needsRehash(set.passwordHash)).toBe(false);
+      await expect(verifyPassword(ada.password, set.passwordHash)).resolves.toBe(true);
+    });
+
+    it('leaves a current hash alone', async () => {
+      repo.findOne.mockResolvedValue(user(await hashPassword(ada.password)));
+      await service.signIn({ email: ada.email, password: ada.password });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('changes nothing for a wrong password or an unknown email', async () => {
+      repo.findOne.mockResolvedValue(user(await hashWith(ada.password, 16384, 8, 1)));
+      await expect(service.signIn({ email: ada.email, password: 'nope-nope-1' })).rejects.toThrow();
+      repo.findOne.mockResolvedValue(null);
+      await expect(service.signIn({ email: 'who@x.io', password: ada.password })).rejects.toThrow();
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('still signs in when the replacement cannot be saved', async () => {
+      repo.findOne.mockResolvedValue(user(await hashWith(ada.password, 16384, 8, 1)));
+      repo.update.mockRejectedValue(new Error('db down'));
+      const result = await service.signIn({ email: ada.email, password: ada.password });
+      await expect(jwt.verifyAsync(result.accessToken)).resolves.toMatchObject({ sub: 'u1' });
+    });
   });
 
   it('me: the user, or a 401 when the account no longer exists', async () => {
