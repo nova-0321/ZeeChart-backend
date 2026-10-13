@@ -72,7 +72,7 @@ describe('Conflicts (e2e)', () => {
         .send({ name: `zzconf ${randomUUID()}` })
         .expect(201)
     ).body as { id: string; version: number };
-    await as(olive, http().post(`/projects/${project.id}/members`))
+    await as(olive, http().post(`/projects/${project.id}/invitations`))
       .send({ email: bob.email })
       .expect(201);
     const task = await newTask(olive, project.id, { name: 'Design' });
@@ -239,7 +239,7 @@ describe('Conflicts (e2e)', () => {
 
     // The project: Olive archives it from an old version after Bob... (owners only) renames it.
     const owner2 = await signUp('Ann');
-    await as(olive, http().post(`/projects/${projectId}/members`))
+    await as(olive, http().post(`/projects/${projectId}/invitations`))
       .send({ email: owner2.email, role: 'owner' })
       .expect(201);
     await as(owner2, http().patch(`/projects/${projectId}/archive`)).expect(200);

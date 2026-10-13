@@ -51,20 +51,9 @@ export class ProjectMembersController {
     return this.members.list(projectId);
   }
 
-  /**
-   * Add someone who has an account, by the email they signed up with (404 when no one has, 409
-   * when they are already a member). An editor unless `role` says otherwise.
-   */
-  @Post()
-  @ProjectAccess('owner', projectInParam())
-  @Broadcast({ entity: 'member', action: 'create', project: projectInParam() })
-  add(
-    @Param('id', ParseUUIDPipe) projectId: string,
-    @Body() dto: AddMemberDto,
-    @CurrentUser() userId: string,
-  ) {
-    return this.members.add(projectId, dto, userId);
-  }
+  // No "add by email" here: people join only through an invitation (POST
+  // /projects/:id/invitations), one path with one rate limit. A separate add route answered
+  // "no one has signed up with this email" with no tighter limit, so emails could be looked up.
 }
 
 @Controller('members')

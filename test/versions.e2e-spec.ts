@@ -215,7 +215,7 @@ describe('Versions (e2e)', () => {
     const { owner, projectId } = await setUp();
     const viewer = await signUp('Vi');
     const stranger = await signUp('Stranger');
-    await as(owner, http().post(`/projects/${projectId}/members`))
+    await as(owner, http().post(`/projects/${projectId}/invitations`))
       .send({ email: viewer.email, role: 'viewer' })
       .expect(201);
     await newTask(owner, projectId, { name: 'A' });

@@ -74,7 +74,7 @@ describe('Members (e2e)', () => {
     return { owner, projectId: project.id, taskId: task.id };
   };
   const add = (owner: Account, projectId: string, body: object) =>
-    as(owner, http().post(`/projects/${projectId}/members`)).send(body);
+    as(owner, http().post(`/projects/${projectId}/invitations`)).send(body);
   const list = async (who: Account, projectId: string) =>
     (await as(who, http().get(`/projects/${projectId}/members`)).expect(200)).body as MemberBody[];
 
@@ -83,7 +83,7 @@ describe('Members (e2e)', () => {
     const ed = await signUp('Ed');
     const added = (
       await add(owner, projectId, { email: `  ${ed.email.toUpperCase()} ` }).expect(201)
-    ).body as MemberBody;
+    ).body.member as MemberBody;
     expect(added).toMatchObject({ userId: ed.id, name: 'Ed', role: 'editor', addedById: owner.id });
     expect((await list(owner, projectId)).map((m) => [m.name, m.role])).toEqual([
       ['Olive', 'owner'],
@@ -101,15 +101,29 @@ describe('Members (e2e)', () => {
     expect(Date.parse(seen!.joinedAt)).toBeGreaterThan(Date.now() - 60_000);
   });
 
-  it('refuses an unknown email (404), someone already in (409) and bad input (400)', async () => {
+  it('refuses someone already in (409) and bad input (400); an unknown email gets a link', async () => {
     const { owner, projectId } = await setUp();
     const ed = await signUp('Ed');
-    await add(owner, projectId, { email: `zzmem-nobody-${randomUUID()}@example.com` }).expect(404);
+    // No account: an invitation with a link, not a 404 (the old direct add said "no one has
+    // signed up with this email", so emails could be looked up).
+    const unknown = (
+      await add(owner, projectId, { email: `zzmem-nobody-${randomUUID()}@example.com` }).expect(201)
+    ).body as { status: string };
+    expect(unknown.status).toBe('invited');
     await add(owner, projectId, { email: ed.email }).expect(201);
     await add(owner, projectId, { email: ed.email }).expect(409);
     await add(owner, projectId, { email: owner.email }).expect(409);
     await add(owner, projectId, { email: 'not-an-email' }).expect(400);
     await add(owner, projectId, { email: ed.email, role: 'admin' }).expect(400);
+  });
+
+  it('has no direct "add by email" route: invitations are the only way in', async () => {
+    const { owner, projectId } = await setUp();
+    const ed = await signUp('Ed');
+    await as(owner, http().post(`/projects/${projectId}/members`))
+      .send({ email: ed.email })
+      .expect(404);
+    expect((await list(owner, projectId)).map((m) => m.name)).toEqual(['Olive']);
   });
 
   it('a viewer reads everything and changes nothing (403)', async () => {
@@ -155,7 +169,8 @@ describe('Members (e2e)', () => {
   it('owners change roles; the change takes effect at once', async () => {
     const { owner, projectId, taskId } = await setUp();
     const ed = await signUp('Ed');
-    const row = (await add(owner, projectId, { email: ed.email }).expect(201)).body as MemberBody;
+    const row = (await add(owner, projectId, { email: ed.email }).expect(201)).body
+      .member as MemberBody;
     const changed = (
       await as(owner, http().patch(`/members/${row.id}`))
         .send({ role: 'viewer' })
@@ -194,7 +209,7 @@ describe('Members (e2e)', () => {
     // With a second owner, the first may step down, and then the second is the last.
     const ann = await signUp('Ann');
     const annRow = (await add(owner, projectId, { email: ann.email, role: 'owner' }).expect(201))
-      .body as MemberBody;
+      .body.member as MemberBody;
     await as(owner, http().patch(`/members/${ownerRow!.id}`))
       .send({ role: 'viewer' })
       .expect(200);
@@ -205,7 +220,7 @@ describe('Members (e2e)', () => {
     const { owner, projectId } = await setUp();
     const ann = await signUp('Ann');
     const annRow = (await add(owner, projectId, { email: ann.email, role: 'owner' }).expect(201))
-      .body as MemberBody;
+      .body.member as MemberBody;
     const ownerRow = (await list(owner, projectId)).find((m) => m.userId === owner.id)!;
     const answers = await Promise.all([
       as(owner, http().patch(`/members/${annRow.id}`)).send({ role: 'editor' }),
@@ -223,7 +238,8 @@ describe('Members (e2e)', () => {
   it('someone removed loses the project at once (404, as if it never existed)', async () => {
     const { owner, projectId, taskId } = await setUp();
     const ed = await signUp('Ed');
-    const row = (await add(owner, projectId, { email: ed.email }).expect(201)).body as MemberBody;
+    const row = (await add(owner, projectId, { email: ed.email }).expect(201)).body
+      .member as MemberBody;
     await as(owner, http().delete(`/members/${row.id}`)).expect(204);
     await as(ed, http().get(`/projects/${projectId}`)).expect(404);
     await as(ed, http().patch(`/tasks/${taskId}`))
