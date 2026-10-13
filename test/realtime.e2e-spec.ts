@@ -1,4 +1,4 @@
-import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { type INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -21,6 +21,7 @@ import type {
 } from '../src/realtime/realtime.types.js';
 import { TaskService } from '../src/tasks/task.service.js';
 import { ConfiguredIoAdapter } from '../src/realtime/socket-io.adapter.js';
+import { createValidationPipe } from '../src/common/validation.js';
 
 // The live connection against the real app and database: rooms per project.
 
@@ -96,7 +97,7 @@ describe('Realtime (e2e)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     // As main.ts sets the app up: validation, and the socket adapter.
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     app.useWebSocketAdapter(new ConfiguredIoAdapter(app, '*'));
     await app.listen(0);
     url = `http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`;

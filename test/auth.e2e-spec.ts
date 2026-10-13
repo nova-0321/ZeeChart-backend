@@ -1,4 +1,4 @@
-import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
@@ -6,6 +6,7 @@ import request from 'supertest';
 import { Like, type Repository } from 'typeorm';
 import { AppModule } from '../src/app.module.js';
 import { User } from '../src/auth/entities/user.entity.js';
+import { createValidationPipe } from '../src/common/validation.js';
 
 // Sign up, sign in and "who am I" against the real app and database.
 
@@ -20,7 +21,7 @@ describe('Auth (e2e)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     // As main.ts sets the app up.
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     // Listening on a port of its own: supertest then reuses it, instead of opening and closing a
     // temporary one for every request (which can refuse a request sent right after another).
     await app.listen(0);

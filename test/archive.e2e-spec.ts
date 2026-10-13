@@ -1,10 +1,11 @@
-import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { ARCHIVED_MESSAGE } from '../src/projects/project-access.js';
 import { deleteTestAccounts } from './cleanup.js';
+import { createValidationPipe } from '../src/common/validation.js';
 
 // An archived project is read-only: nothing in its plan changes (tasks, groups, milestones, links,
 // events, undo/redo, restores) until an owner reopens it. Reading, renaming, reopening, deleting,
@@ -31,7 +32,7 @@ describe('Archived projects (e2e)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     await app.listen(0);
     ({ token: ada } = await signUp('Ada'));
     ({ token: eve, email: eveEmail } = await signUp('Eve'));

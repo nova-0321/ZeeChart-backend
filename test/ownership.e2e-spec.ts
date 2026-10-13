@@ -1,9 +1,10 @@
-import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { deleteTestAccounts } from './cleanup.js';
+import { createValidationPipe } from '../src/common/validation.js';
 
 // Every project has an owner, and only its members see it and everything in it. To anyone else it
 // does not exist (404, the same answer as for a made-up id). Roles inside a project are in
@@ -31,7 +32,7 @@ describe('Project ownership (e2e)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     // Listening on a port of its own: supertest then reuses it, instead of opening and closing a
     // temporary one for every request (which can refuse a request sent right after another).
     await app.listen(0);

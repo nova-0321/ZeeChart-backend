@@ -1,10 +1,11 @@
-import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { LAST_OWNER } from '../src/members/members.service.js';
 import { deleteTestAccounts } from './cleanup.js';
+import { createValidationPipe } from '../src/common/validation.js';
 
 // Members and roles: a viewer reads, an editor also changes tasks, links and events, an owner also
 // changes the project and its members. A project always keeps at least one owner.
@@ -42,7 +43,7 @@ describe('Members (e2e)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     await app.listen(0);
   });
 
