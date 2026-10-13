@@ -47,6 +47,8 @@ interface SocketData {
   projectId?: string;
   /** When it last passed on a cursor (ms): more than CURSOR_MIN_MS apart, or dropped. */
   cursorAt?: number;
+  /** When it asked to join a room (ms), within the last JOIN_WINDOW_MS: at most JOIN_LIMIT. */
+  joinsAt?: number[];
   /** When its token runs out (ms since 1970): the connection is closed then. */
   expiresAt?: number;
 }
@@ -58,6 +60,14 @@ const MAX_WAIT_MS = 2 ** 31 - 1;
 
 /** A tab's cursors are passed on at most this often (a busy or broken client can't flood a room). */
 const CURSOR_MIN_MS = 30;
+/**
+ * Joins per socket: each costs two queries and a presence message to the room, so a broken or
+ * hostile client can't repeat it without end. Far above what switching projects needs; a refused
+ * join is tried again by the app a moment later (live-sync.ts).
+ */
+export const JOIN_LIMIT = 10;
+export const JOIN_WINDOW_MS = 10_000;
+export const JOIN_TOO_OFTEN = 'Too many joins: try again in a moment';
 
 /** A fraction (0..1) and nothing else. */
 const unit = (value: unknown): value is number =>
@@ -186,6 +196,12 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   /** Only a member of the project may join its room; to anyone else it does not exist. */
   @SubscribeMessage('join')
   async join(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): Promise<RoomAck> {
+    // Counted first, refused ones too: past the limit, a flood costs no query at all.
+    const data = dataOf(socket);
+    const now = Date.now();
+    data.joinsAt = (data.joinsAt ?? []).filter((at) => now - at < JOIN_WINDOW_MS);
+    if (data.joinsAt.length >= JOIN_LIMIT) return { ok: false, error: JOIN_TOO_OFTEN };
+    data.joinsAt.push(now);
     const projectId = (body as { projectId?: unknown } | null)?.projectId;
     if (typeof projectId !== 'string' || !isUUID(projectId)) {
       return { ok: false, error: 'projectId must be a UUID' };
