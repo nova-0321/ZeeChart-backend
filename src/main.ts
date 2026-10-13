@@ -1,10 +1,9 @@
 import { NestFactory } from '@nestjs/core';
-import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
-import { createOpenApiDocument } from './openapi/openapi.js';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { configureProxy } from './common/proxy.js';
+import { configureSecurity } from './common/security.js';
 import { ConfiguredIoAdapter } from './realtime/socket-io.adapter.js';
 import { createValidationPipe } from './common/validation.js';
 
@@ -17,8 +16,8 @@ async function bootstrap() {
   // Live updates (socket.io) on the same port, allowed from the same origin.
   app.useWebSocketAdapter(new ConfiguredIoAdapter(app, config.get<string>('CORS_ORIGIN')));
   app.useGlobalPipes(createValidationPipe());
-  // Swagger UI at /docs, raw spec at /docs-json
-  SwaggerModule.setup('docs', app, () => createOpenApiDocument(app));
+  // Security headers, and the API docs where API_DOCS allows (see common/security.ts).
+  configureSecurity(app, config);
   await app.listen(process.env.PORT ?? 3000);
 }
 await bootstrap();

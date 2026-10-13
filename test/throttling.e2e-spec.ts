@@ -1,4 +1,4 @@
-import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { type INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
@@ -6,6 +6,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { configureProxy } from '../src/common/proxy.js';
 import { EMAIL_LIMIT } from '../src/common/throttling.js';
+import { createValidationPipe } from '../src/common/validation.js';
 
 // The rate limits, switched on (the other e2e tests run without them), behind one trusted proxy as
 // on Render: the test client plays the proxy, and X-Forwarded-For carries the caller's address.
@@ -29,7 +30,7 @@ describe('Rate limits behind a proxy (e2e)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     const nest = moduleRef.createNestApplication<NestExpressApplication>();
     configureProxy(nest, nest.get(ConfigService));
-    nest.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    nest.useGlobalPipes(createValidationPipe());
     await nest.listen(0);
     app = nest;
   });

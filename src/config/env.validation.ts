@@ -16,6 +16,13 @@ export const envValidationSchema = Joi.object({
   TRUST_PROXY: Joi.alternatives()
     .try(Joi.number().integer().min(0).max(10), Joi.boolean().valid(false))
     .default(false),
+  // Serve the API docs (Swagger UI at /docs, the spec at /docs-json). Off in production unless set:
+  // the full map of the API need not be public. The frontend's types come from openapi.json.
+  API_DOCS: Joi.when('NODE_ENV', {
+    is: 'production',
+    then: Joi.boolean().default(false),
+    otherwise: Joi.boolean().default(true),
+  }),
 
   DB_HOST: Joi.string().hostname().required(),
   DB_PORT: Joi.number().port().default(5432),
