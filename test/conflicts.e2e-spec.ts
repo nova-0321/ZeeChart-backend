@@ -1,9 +1,10 @@
-import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { deleteTestAccounts } from './cleanup.js';
+import { createValidationPipe } from '../src/common/validation.js';
 
 // Conflict checks (#21): a write made from an older version (If-Match) is refused only when someone
 // else changed the same fields since; anything else goes through.
@@ -53,7 +54,7 @@ describe('Conflicts (e2e)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     await app.listen(0);
   });
 

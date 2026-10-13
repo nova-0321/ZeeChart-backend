@@ -1,10 +1,11 @@
-import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module.js';
 import { deleteTestAccounts } from './cleanup.js';
+import { createValidationPipe } from '../src/common/validation.js';
 
 // Undo and redo of one's own changes (from the history), copying a version into a new project,
 // what a version restore removes, and how many versions are kept.
@@ -46,7 +47,7 @@ describe('Undo, redo and versions (e2e)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     await app.listen(0);
     db = app.get(DataSource);
   });
