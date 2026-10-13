@@ -7,8 +7,12 @@ import { Like, type Repository } from 'typeorm';
 import { AppModule } from '../src/app.module.js';
 import { User } from '../src/auth/entities/user.entity.js';
 import { createValidationPipe } from '../src/common/validation.js';
+import { hashWith } from './password-hashes.js';
 
 // Sign up, sign in and "who am I" against the real app and database.
+
+/** What a hash made now starts with: scrypt, N = 2^15, r = 8, p = 3 (see auth/password.ts). */
+const CURRENT_SETTINGS = new RegExp(['^scrypt', 32768, 8, 3, ''].join('\\$'));
 
 describe('Auth (e2e)', () => {
   let app: INestApplication;
@@ -81,6 +85,39 @@ describe('Auth (e2e)', () => {
     expect((again.body as { message: string }).message).toBe(
       'An account with this email already exists',
     );
+  });
+
+  it('signing in replaces a password hash made with older, weaker settings', async () => {
+    const address = email();
+    await http()
+      .post('/auth/signup')
+      .send({ name: 'Ada', email: address, password: 'pass-word-1' })
+      .expect(201);
+    const stored = async () =>
+      (await users.findOneOrFail({ where: { email: address }, select: { passwordHash: true } }))
+        .passwordHash;
+    expect(await stored()).toMatch(CURRENT_SETTINGS);
+
+    // The way an earlier version stored it: N = 2^14, r = 8, p = 1.
+    const old = await hashWith('pass-word-1', 16384, 8, 1);
+    await users.update({ email: address }, { passwordHash: old });
+
+    // A wrong password signs nobody in and leaves the old hash as it was.
+    await http()
+      .post('/auth/signin')
+      .send({ email: address, password: 'wrong-pass-1' })
+      .expect(401);
+    expect(await stored()).toBe(old);
+
+    // The right one still works with the old hash, and replaces it.
+    await http().post('/auth/signin').send({ email: address, password: 'pass-word-1' }).expect(200);
+    const upgraded = await stored();
+    expect(upgraded).not.toBe(old);
+    expect(upgraded).toMatch(CURRENT_SETTINGS);
+
+    // Signing in with the new hash works, and does not change it again.
+    await http().post('/auth/signin').send({ email: address, password: 'pass-word-1' }).expect(200);
+    expect(await stored()).toBe(upgraded);
   });
 
   it('bad input is a 400 listing every problem', async () => {

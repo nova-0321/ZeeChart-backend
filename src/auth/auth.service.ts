@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
@@ -6,7 +6,7 @@ import type { AuthResponseDto, AuthUserDto } from './dto/auth-response.dto.js';
 import type { SignInDto } from './dto/sign-in.dto.js';
 import type { SignUpDto } from './dto/sign-up.dto.js';
 import { User } from './entities/user.entity.js';
-import { dummyPasswordHash, hashPassword, verifyPassword } from './password.js';
+import { dummyPasswordHash, hashPassword, needsRehash, verifyPassword } from './password.js';
 
 /** What a token carries: the user's id in `sub`. */
 export interface TokenPayload {
@@ -23,6 +23,8 @@ const isUniqueViolation = (error: unknown) =>
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(User)
     private readonly users: Repository<User>,
@@ -57,7 +59,25 @@ export class AuthService {
       user?.passwordHash ?? (await dummyPasswordHash()),
     );
     if (!user || !ok) throw new UnauthorizedException(BAD_CREDENTIALS);
+    await this.upgradeHash(user, dto.password);
     return this.issue(user);
+  }
+
+  /**
+   * A hash made with weaker settings than today's (see password.ts) is replaced now that the
+   * password is at hand. Only if it is still the one that was checked, so a newer one is never
+   * overwritten; and a failure here never stops the sign-in, the old hash still works.
+   */
+  private async upgradeHash(user: User, password: string) {
+    if (!needsRehash(user.passwordHash)) return;
+    try {
+      await this.users.update(
+        { id: user.id, passwordHash: user.passwordHash },
+        { passwordHash: await hashPassword(password) },
+      );
+    } catch (error) {
+      this.logger.warn(`Could not upgrade the password hash of ${user.id}: ${String(error)}`);
+    }
   }
 
   async me(id: string): Promise<AuthUserDto> {
