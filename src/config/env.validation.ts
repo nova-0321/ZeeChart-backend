@@ -1,5 +1,10 @@
 import Joi from 'joi';
 
+/** Signs tokens in tests only (NODE_ENV=test): never accepted anywhere else. */
+export const TEST_JWT_SECRET = 'zeechart-test-only-secret-never-use-elsewhere-0001';
+/** Secrets that have been in the repository, so are known to everyone. */
+const PUBLIC_JWT_SECRETS = ['zeechart-development-secret-not-for-production', TEST_JWT_SECRET];
+
 export const envValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
   PORT: Joi.number().port().default(3000),
@@ -16,13 +21,23 @@ export const envValidationSchema = Joi.object({
   // publicly trusted, e.g. Supabase's pooler).
   DB_SSL: Joi.string().valid('false', 'true', 'no-verify').default('false'),
 
-  // Signs the sign-in tokens. Required (32+ characters) in production; elsewhere a fixed
-  // development value is used when unset, so a fresh checkout (and CI) still starts. Changing it
-  // signs everyone out.
+  // Signs the sign-in tokens: anyone who knows it can sign in as anyone. Required (32+ random
+  // characters) everywhere but tests, development included: a default would also apply to a server
+  // whose NODE_ENV was simply never set. The value that used to be the default is public (it was in
+  // this file), so it is refused. Tests get a fixed value of their own. Changing it signs everyone
+  // out.
   JWT_SECRET: Joi.when('NODE_ENV', {
-    is: 'production',
-    then: Joi.string().min(32).required(),
-    otherwise: Joi.string().min(16).default('zeechart-development-secret-not-for-production'),
+    is: 'test',
+    then: Joi.string().min(32).default(TEST_JWT_SECRET),
+    otherwise: Joi.string()
+      .min(32)
+      .invalid(...PUBLIC_JWT_SECRETS)
+      .required()
+      .messages({
+        'any.required':
+          "JWT_SECRET is not set. Generate one with: node -e \"console.log(require('crypto').randomBytes(48).toString('base64'))\"",
+        'any.invalid': 'JWT_SECRET is a value published in the repository: generate a new one',
+      }),
   }),
   // How long a sign-in lasts, e.g. "7d", "12h".
   JWT_EXPIRES_IN: Joi.string()
