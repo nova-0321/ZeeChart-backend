@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth } from '@nestjs/swagger';
+import { ThrottleByEmail } from '../common/throttling.js';
 import { NoBroadcast } from '../realtime/broadcast.decorator.js';
 import { AuthGuard, type AuthedRequest } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
@@ -24,8 +25,9 @@ export class AuthController {
 
   /** Sign in. 401 for a wrong email or password (the same message for both). */
   @Post('signin')
-  // Guessing passwords: a few tries a minute per address.
+  // Guessing passwords: a few tries a minute per address, and a few per email from anywhere.
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ThrottleByEmail()
   @NoBroadcast('changes nothing')
   @HttpCode(HttpStatus.OK)
   signIn(@Body() dto: SignInDto): Promise<AuthResponseDto> {

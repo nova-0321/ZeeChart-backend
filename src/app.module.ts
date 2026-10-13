@@ -2,6 +2,7 @@ import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { envValidationSchema } from './config/env.validation.js';
+import { throttlerOptions } from './common/throttling.js';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 import { AppController } from './app.controller.js';
@@ -26,15 +27,10 @@ import { DatabaseModule } from './database/database.module.js';
       // confusing connection error later.
       validationSchema: envValidationSchema,
     }),
-    // Requests per address per minute: plenty for the app, a stop to hammering (signing in,
-    // invite links and invites have tighter limits of their own: see @Throttle). Off in tests,
-    // which sign up many accounts at once.
+    // Rate limits per address, and sign-in tries per email (see common/throttling.ts).
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        throttlers: [{ name: 'default', ttl: 60_000, limit: 600 }],
-        skipIf: () => config.get<string>('NODE_ENV') === 'test',
-      }),
+      useFactory: throttlerOptions,
     }),
     DatabaseModule,
     AuthModule,
