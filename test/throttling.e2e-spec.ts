@@ -2,7 +2,7 @@ import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { configureProxy } from '../src/common/proxy.js';
 import { EMAIL_LIMIT } from '../src/common/throttling.js';
@@ -12,13 +12,19 @@ import { EMAIL_LIMIT } from '../src/common/throttling.js';
 // Every sign-in here is for an email with no account (401), so nothing needs cleaning up.
 
 describe('Rate limits behind a proxy (e2e)', () => {
-  let app: INestApplication;
-  const saved = { NODE_ENV: process.env.NODE_ENV, TRUST_PROXY: process.env.TRUST_PROXY };
+  let app: INestApplication | undefined;
+  const saved = {
+    NODE_ENV: process.env.NODE_ENV,
+    TRUST_PROXY: process.env.TRUST_PROXY,
+    JWT_SECRET: process.env.JWT_SECRET,
+  };
 
   beforeAll(async () => {
     // Before AppModule is loaded: its config is read and checked when it is imported.
     process.env.NODE_ENV = 'development';
     process.env.TRUST_PROXY = '1';
+    // Outside tests the app requires a real secret: a throwaway one (nothing outside this test).
+    process.env.JWT_SECRET ??= randomBytes(48).toString('base64');
     const { AppModule } = await import('../src/app.module.js');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     const nest = moduleRef.createNestApplication<NestExpressApplication>();
@@ -29,14 +35,16 @@ describe('Rate limits behind a proxy (e2e)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
-    process.env.NODE_ENV = saved.NODE_ENV;
-    if (saved.TRUST_PROXY === undefined) delete process.env.TRUST_PROXY;
-    else process.env.TRUST_PROXY = saved.TRUST_PROXY;
+    // Undefined when it failed to start: the start's error is the one to read.
+    await app?.close();
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   });
 
   const signIn = (from: string, email = `zzthr-${randomUUID()}@example.com`) =>
-    request(app.getHttpServer())
+    request(app!.getHttpServer())
       .post('/auth/signin')
       .set('X-Forwarded-For', from)
       .send({ email, password: 'wrong-password-1' });
