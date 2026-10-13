@@ -9,6 +9,13 @@ export const envValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
   PORT: Joi.number().port().default(3000),
   CORS_ORIGIN: Joi.string().default('http://127.0.0.1:5173'),
+  // How many proxies (load balancers) sit in front of the server, e.g. 1 on Render; false when
+  // clients connect directly (local). Each one adds the caller's address to X-Forwarded-For; the
+  // last N entries are trusted, so the rate limits count each client, not the proxy. Never `true`:
+  // that trusts every entry, and a client could send a made-up address to escape the limits.
+  TRUST_PROXY: Joi.alternatives()
+    .try(Joi.number().integer().min(0).max(10), Joi.boolean().valid(false))
+    .default(false),
 
   DB_HOST: Joi.string().hostname().required(),
   DB_PORT: Joi.number().port().default(5432),
