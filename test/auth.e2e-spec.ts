@@ -11,8 +11,8 @@ import { hashWith } from './password-hashes.js';
 
 // Sign up, sign in and "who am I" against the real app and database.
 
-/** What a hash made now starts with: scrypt, N = 2^15, r = 8, p = 3 (see auth/password.ts). */
-const CURRENT_SETTINGS = new RegExp(['^scrypt', 32768, 8, 3, ''].join('\\$'));
+/** What a hash made now starts with: scrypt, N = 2^17, r = 8, p = 1 (see auth/password.ts). */
+const CURRENT_SETTINGS = new RegExp(['^scrypt', 131072, 8, 1, ''].join('\\$'));
 
 describe('Auth (e2e)', () => {
   let app: INestApplication;

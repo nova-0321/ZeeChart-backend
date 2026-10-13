@@ -14,8 +14,8 @@ describe('password hashing', () => {
     const b = await hashPassword('same password');
     expect(a).not.toContain('same password');
     expect(a).not.toBe(b);
-    // N = 2^15, r = 8, p = 3: OWASP's equivalent of N = 2^17 at a quarter of the memory.
-    expect(a.startsWith('scrypt$32768$8$3$')).toBe(true);
+    // N = 2^17, r = 8, p = 1: OWASP's first choice.
+    expect(a.startsWith('scrypt$131072$8$1$')).toBe(true);
   });
 
   it('refuses anything that is not one of its hashes', async () => {
@@ -55,14 +55,14 @@ describe('needsRehash: moving to stronger settings', () => {
     await expect(verifyPassword('wrong password', old)).resolves.toBe(false);
   });
 
-  it('is true when any one of N, r and p is weaker', async () => {
-    expect(needsRehash(await hashWith('x', 32768, 8, 1))).toBe(true); // p
-    expect(needsRehash(await hashWith('x', 16384, 8, 5))).toBe(true); // N
-    expect(needsRehash(await hashWith('x', 32768, 4, 3))).toBe(true); // r
+  it('is true when N or r is weaker, including the equivalent settings that cost less memory', async () => {
+    expect(needsRehash(await hashWith('x', 65536, 8, 1))).toBe(true); // N
+    expect(needsRehash(await hashWith('x', 32768, 8, 3))).toBe(true); // N, p higher
+    expect(needsRehash(await hashWith('x', 131072, 4, 1))).toBe(true); // r
   });
 
   it('is false for a stronger hash, and for what is not a hash of ours', async () => {
-    expect(needsRehash(await hashWith('x', 65536, 8, 3))).toBe(false);
+    expect(needsRehash(await hashWith('x', 131072, 8, 2))).toBe(false);
     for (const stored of ['plain-text', '', 'bcrypt$x$y$z$a$b']) {
       expect(needsRehash(stored)).toBe(false);
     }

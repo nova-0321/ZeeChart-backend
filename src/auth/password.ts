@@ -5,15 +5,15 @@ import { randomBytes, scrypt, timingSafeEqual, type ScryptOptions } from 'node:c
 // hashes still verify (and are replaced by a stronger one at the next sign-in, see needsRehash):
 //   scrypt$<N>$<r>$<p>$<salt base64>$<hash base64>
 //
-// The cost: N = 2^15, r = 8, p = 3, one of the combinations OWASP lists as equally strong as its
-// first choice (N = 2^17, p = 1), chosen for the memory: a hash needs 128 * N * r bytes, 32 MB
-// here against 128 MB, and up to four run at once (Node's thread pool), so a small host (Render's
-// free instance has 512 MB) is not at risk of running out when several people sign in together.
-// About 0.2 s per hash on a laptop core.
+// The cost: N = 2^17, r = 8, p = 1, OWASP's first choice (the client's request). A hash needs
+// 128 * N * r bytes: 128 MB, and up to four run at once (Node's thread pool), so the host needs
+// that much memory to spare for sign-ins; a smaller one should use one of OWASP's equivalents that
+// trade memory for time, e.g. N = 2^15, p = 3 (32 MB per hash). About 0.3 s per hash on a laptop
+// core.
 
-const N = 2 ** 15;
+const N = 2 ** 17;
 const R = 8;
-const P = 3;
+const P = 1;
 const KEY_LENGTH = 64;
 const SALT_BYTES = 16;
 /** The most memory a hash may take, whatever its stored parameters say (128 * N * r bytes). */
