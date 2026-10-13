@@ -1,6 +1,7 @@
 import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { HttpThrottlerGuard } from './common/http-throttler.guard.js';
 import { envValidationSchema } from './config/env.validation.js';
 import { throttlerOptions } from './common/throttling.js';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
@@ -50,7 +51,8 @@ import { DatabaseModule } from './database/database.module.js';
     AppService,
     // Registered here (not in main.ts) so the filter can inject HttpAdapterHost.
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // HTTP only: socket messages have their own limits (see HttpThrottlerGuard).
+    { provide: APP_GUARD, useClass: HttpThrottlerGuard },
   ],
 })
 export class AppModule implements NestModule {
