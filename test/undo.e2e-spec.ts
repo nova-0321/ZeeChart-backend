@@ -202,7 +202,7 @@ describe('Undo, redo and versions (e2e)', () => {
   it("only your own changes; someone else's change since blocks it (409), nothing written", async () => {
     const { owner, projectId } = await setUp();
     const bob = await signUp('Bob');
-    await as(owner, http().post(`/projects/${projectId}/members`))
+    await as(owner, http().post(`/projects/${projectId}/invitations`))
       .send({ email: bob.email })
       .expect(201);
     const task = await newTask(owner, projectId, { name: 'Olive’s' });
@@ -227,7 +227,7 @@ describe('Undo, redo and versions (e2e)', () => {
     const { owner, projectId } = await setUp();
     const viewer = await signUp('Vi');
     const stranger = await signUp('Stranger');
-    await as(owner, http().post(`/projects/${projectId}/members`))
+    await as(owner, http().post(`/projects/${projectId}/invitations`))
       .send({ email: viewer.email, role: 'viewer' })
       .expect(201);
     expect(await state(viewer, projectId)).toEqual({ undo: null, redo: null });

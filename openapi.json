@@ -555,50 +555,6 @@
         "tags": [
           "ProjectMembers"
         ]
-      },
-      "post": {
-        "operationId": "ProjectMembers_add",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddMemberDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemberDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Add someone who has an account, by the email they signed up with (404 when no one has, 409\nwhen they are already a member). An editor unless `role` says otherwise.",
-        "tags": [
-          "ProjectMembers"
-        ]
       }
     },
     "/members/{id}": {
@@ -2385,29 +2341,6 @@
           "joinedAt"
         ]
       },
-      "AddMemberDto": {
-        "type": "object",
-        "properties": {
-          "role": {
-            "description": "Their role; editor when left out.",
-            "default": "editor",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/MemberRole"
-              }
-            ]
-          },
-          "email": {
-            "type": "string",
-            "description": "The email they signed up with. Trimmed and lower-cased, as on sign-up. (Names are not unique,\nso a member is found by email only.)",
-            "maxLength": 254,
-            "format": "email"
-          }
-        },
-        "required": [
-          "email"
-        ]
-      },
       "ChangeRoleDto": {
         "type": "object",
         "properties": {
@@ -2470,6 +2403,29 @@
           "invitedByName",
           "createdAt",
           "expiresAt"
+        ]
+      },
+      "AddMemberDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "description": "Their role; editor when left out.",
+            "default": "editor",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemberRole"
+              }
+            ]
+          },
+          "email": {
+            "type": "string",
+            "description": "The email they signed up with. Trimmed and lower-cased, as on sign-up. (Names are not unique,\nso a member is found by email only.)",
+            "maxLength": 254,
+            "format": "email"
+          }
+        },
+        "required": [
+          "email"
         ]
       },
       "InviteResultDto": {

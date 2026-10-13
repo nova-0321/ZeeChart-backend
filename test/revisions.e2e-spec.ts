@@ -245,7 +245,7 @@ describe('Revisions (e2e)', () => {
   it('events: deleted and restored; the project itself: owners only', async () => {
     const { owner, projectId, projectName } = await setUp();
     const editor = await signUp('Ed');
-    await as(owner, http().post(`/projects/${projectId}/members`))
+    await as(owner, http().post(`/projects/${projectId}/invitations`))
       .send({ email: editor.email })
       .expect(201);
     const event = (
@@ -284,7 +284,7 @@ describe('Revisions (e2e)', () => {
     const { owner, projectId } = await setUp();
     const viewer = await signUp('Vi');
     const stranger = await signUp('Stranger');
-    await as(owner, http().post(`/projects/${projectId}/members`))
+    await as(owner, http().post(`/projects/${projectId}/invitations`))
       .send({ email: viewer.email, role: 'viewer' })
       .expect(201);
     const [first] = await history(viewer, projectId);
@@ -299,7 +299,7 @@ describe('Revisions (e2e)', () => {
   it('member changes are not part of the history; paging goes back in time', async () => {
     const { owner, projectId } = await setUp();
     const ed = await signUp('Ed');
-    await as(owner, http().post(`/projects/${projectId}/members`))
+    await as(owner, http().post(`/projects/${projectId}/invitations`))
       .send({ email: ed.email })
       .expect(201);
     expect((await history(owner, projectId)).length).toBe(1);

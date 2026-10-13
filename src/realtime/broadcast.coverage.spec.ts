@@ -47,10 +47,10 @@ const writeRoutes = () =>
 
 describe('broadcast coverage', () => {
   it('finds the write routes', () => {
-    // 34 today: projects 5, tasks 6, dependencies 3, events 3, members 3, invitations 3,
+    // 33 today: projects 5, tasks 6, dependencies 3, events 3, members 2, invitations 3,
     // invite links 2,
     // revisions 1, versions 3, undo 2, auth 2. A new one makes this fail on purpose.
-    expect(writeRoutes().length).toBe(34);
+    expect(writeRoutes().length).toBe(33);
   });
 
   it('every write route is @Broadcast or @NoBroadcast', () => {

@@ -173,9 +173,11 @@ describe('Project ownership (e2e)', () => {
       ['delete an event', () => as(bob, http().delete(`/events/${event.id}`))],
       ['list members', () => as(bob, http().get(`/projects/${project.id}/members`))],
       [
-        'add a member',
+        'invite a member',
         () =>
-          as(bob, http().post(`/projects/${project.id}/members`)).send({ email: 'x@example.com' }),
+          as(bob, http().post(`/projects/${project.id}/invitations`)).send({
+            email: 'x@example.com',
+          }),
       ],
     ];
     const answers: string[] = [];

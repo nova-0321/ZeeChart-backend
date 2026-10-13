@@ -55,7 +55,7 @@ describe('Archived projects (e2e)', () => {
       [eveEmail, 'editor'],
       [vicEmail, 'viewer'],
     ]) {
-      await as(ada, http().post(`/projects/${project.id}/members`))
+      await as(ada, http().post(`/projects/${project.id}/invitations`))
         .send({ email, role })
         .expect(201);
     }

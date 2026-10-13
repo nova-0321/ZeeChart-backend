@@ -151,7 +151,7 @@ describe('Fixes (e2e)', () => {
   it('undo keeps a group covering a task someone else put in it since', async () => {
     const { owner, projectId } = await setUp();
     const bob = await signUp('Bob');
-    await as(owner, http().post(`/projects/${projectId}/members`))
+    await as(owner, http().post(`/projects/${projectId}/invitations`))
       .send({ email: bob.email })
       .expect(201);
     const group = (
@@ -265,15 +265,15 @@ describe('Fixes (e2e)', () => {
     const ed = await signUp('Ed');
     const vi = await signUp('Vi');
     const edRow = (
-      await as(owner, http().post(`/projects/${projectId}/members`))
+      await as(owner, http().post(`/projects/${projectId}/invitations`))
         .send({ email: ed.email })
         .expect(201)
-    ).body as { id: string };
+    ).body.member as { id: string };
     const viRow = (
-      await as(owner, http().post(`/projects/${projectId}/members`))
+      await as(owner, http().post(`/projects/${projectId}/invitations`))
         .send({ email: vi.email, role: 'viewer' })
         .expect(201)
-    ).body as { id: string };
+    ).body.member as { id: string };
     // Ed can't remove Vi; Vi can leave.
     await as(ed, http().delete(`/members/${viRow.id}`)).expect(403);
     await as(vi, http().delete(`/members/${viRow.id}`)).expect(204);
@@ -301,7 +301,7 @@ describe('Fixes (e2e)', () => {
   it('undo of a move puts the task back at its place, keeping a move someone made since', async () => {
     const { owner, projectId } = await setUp();
     const bob = await signUp('Bob');
-    await as(owner, http().post(`/projects/${projectId}/members`))
+    await as(owner, http().post(`/projects/${projectId}/invitations`))
       .send({ email: bob.email })
       .expect(201);
     const ids: Record<string, string> = {};
@@ -336,7 +336,7 @@ describe('Fixes (e2e)', () => {
   it("a task renumbered by someone else's move can still be deleted with the version it had", async () => {
     const { owner, projectId } = await setUp();
     const bob = await signUp('Bob');
-    await as(owner, http().post(`/projects/${projectId}/members`))
+    await as(owner, http().post(`/projects/${projectId}/invitations`))
       .send({ email: bob.email })
       .expect(201);
     const a = (await newTask(owner, projectId, { name: 'a' }).expect(201)).body as TaskBody & {

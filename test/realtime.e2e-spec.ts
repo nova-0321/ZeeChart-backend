@@ -497,8 +497,11 @@ describe('Realtime (e2e)', () => {
       ];
       const [got1, got2] = [inbox(tab1), inbox(tab2)];
       const member = (
-        await http().post(`/projects/${projectId}/members`).send({ email: bob.email }).expect(201)
-      ).body as { id: string };
+        await http()
+          .post(`/projects/${projectId}/invitations`)
+          .send({ email: bob.email })
+          .expect(201)
+      ).body.member as { id: string };
       await settle();
       const added = { projectId, entity: 'member', action: 'create', id: member.id };
       expect(got1).toEqual([added]);
@@ -510,7 +513,10 @@ describe('Realtime (e2e)', () => {
     it("a request can't keep someone else's tab from hearing of it (their tab id in X-Client-Id)", async () => {
       const projectId = await project('mb0');
       const bob = await someone('Bob');
-      await http().post(`/projects/${projectId}/members`).send({ email: bob.email }).expect(201);
+      await http()
+        .post(`/projects/${projectId}/invitations`)
+        .send({ email: bob.email })
+        .expect(201);
       const bobTabId = randomUUID();
       const bobTab = await connect(bobTabId, bob.token);
       await bobTab.emitWithAck('join', { projectId });
@@ -535,8 +541,11 @@ describe('Realtime (e2e)', () => {
       const projectId = await project('mb2');
       const bob = await someone('Bob');
       const member = (
-        await http().post(`/projects/${projectId}/members`).send({ email: bob.email }).expect(201)
-      ).body as { id: string };
+        await http()
+          .post(`/projects/${projectId}/invitations`)
+          .send({ email: bob.email })
+          .expect(201)
+      ).body.member as { id: string };
       const ownerTab = await connect(randomUUID());
       const bobTab = await connect(randomUUID(), bob.token);
       await ownerTab.emitWithAck('join', { projectId });
@@ -568,7 +577,7 @@ describe('Realtime (e2e)', () => {
       const [here, elsewhere] = [await project('c1'), await project('c2')];
       const bob = await someone('Bob');
       await request(app.getHttpServer())
-        .post(`/projects/${here}/members`)
+        .post(`/projects/${here}/invitations`)
         .set('Authorization', `Bearer ${ownerToken}`)
         .send({ email: bob.email })
         .expect(201);
@@ -730,7 +739,7 @@ describe('Realtime (e2e)', () => {
       const id = await project('pr6');
       const bob = await someone('Bob');
       await request(app.getHttpServer())
-        .post(`/projects/${id}/members`)
+        .post(`/projects/${id}/invitations`)
         .set('Authorization', `Bearer ${ownerToken}`)
         .send({ email: bob.email })
         .expect(201);
