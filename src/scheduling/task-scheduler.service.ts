@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager } from 'typeorm';
+import { RequestTransaction } from '../database/request-transaction.js';
 import {
   planAttach,
   planEdit,
@@ -19,10 +19,11 @@ const day = (date: Date | string) => String(date).slice(0, 10);
 /** Applies the scheduling rules of dependencies (see schedule.ts) to the stored tasks. */
 @Injectable()
 export class TaskScheduler {
-  constructor(
-    @InjectRepository(Task)
-    private readonly taskRepo: Repository<Task>,
-  ) {}
+  constructor(private readonly tx: RequestTransaction) {}
+
+  private get taskRepo() {
+    return this.tx.repo(Task);
+  }
 
   /**
    * Save a task whose dates were just edited (`task` carries the new ones, nothing is stored yet):

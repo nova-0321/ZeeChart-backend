@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, type EntityManager, Not, Repository } from 'typeorm';
+import { type EntityManager, Not } from 'typeorm';
+import { RequestTransaction } from '../database/request-transaction.js';
 import { rejectNulls } from '../common/reject-nulls.js';
 import { Member } from '../members/entities/member.entity.js';
 import { ProjectVersion } from '../revisions/entities/project-version.entity.js';
@@ -13,17 +13,19 @@ import { Project } from './entities/project.entity.js';
 
 @Injectable()
 export class ProjectsService {
-  constructor(
-    @InjectRepository(Project)
-    private readonly projectRepo: Repository<Project>,
-    @InjectRepository(Member)
-    private readonly memberRepo: Repository<Member>,
-    private readonly db: DataSource,
-  ) {}
+  constructor(private readonly tx: RequestTransaction) {}
+
+  private get projectRepo() {
+    return this.tx.repo(Project);
+  }
+
+  private get memberRepo() {
+    return this.tx.repo(Member);
+  }
 
   /** A new project; whoever makes it is its first owner. */
   create(createProjectDto: CreateProjectDto, userId: string): Promise<MyProjectDto> {
-    return this.db.transaction(async (manager) => {
+    return this.tx.run(async (manager) => {
       await assertNameFree(manager, userId, createProjectDto.name);
       // Version 1: its first revision ("Created project") is written below, with the same number.
       const project = await manager.save(
@@ -91,7 +93,7 @@ export class ProjectsService {
   async update(id: string, updateProjectDto: UpdateProjectDto, userId: string) {
     // null is no value for a name (the description may be cleared).
     rejectNulls(updateProjectDto, ['description']);
-    await this.db.transaction(async (manager) => {
+    await this.tx.run(async (manager) => {
       const project = await manager.findOneBy(Project, { id });
       if (!project) throw new NotFoundException(`Project ${id} not found`);
       const { name } = updateProjectDto;

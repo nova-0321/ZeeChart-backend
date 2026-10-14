@@ -31,3 +31,22 @@ describe('database SSL (DB_SSL)', () => {
     expect(envValidationSchema.validate({ ...required }).value).toMatchObject({ DB_SSL: 'false' });
   });
 });
+
+describe('database pool size (DB_POOL_SIZE)', () => {
+  const poolWith = (env: Record<string, string>) =>
+    (buildDataSourceOptions((key) => env[key]) as { poolSize?: number }).poolSize;
+
+  it('is 10 unless set, and takes the number given', () => {
+    expect(poolWith(required)).toBe(10);
+    expect(poolWith({ ...required, DB_POOL_SIZE: '4' })).toBe(4);
+    expect(envValidationSchema.validate({ ...required }).value).toMatchObject({ DB_POOL_SIZE: 10 });
+  });
+
+  it('refuses anything but a whole number from 1 to 100 at startup', () => {
+    for (const bad of ['0', '-1', '2.5', '101', 'many']) {
+      expect(
+        envValidationSchema.validate({ ...required, DB_POOL_SIZE: bad }).error?.message,
+      ).toMatch(/DB_POOL_SIZE/);
+    }
+  });
+});

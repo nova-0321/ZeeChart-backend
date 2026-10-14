@@ -7,8 +7,9 @@ export type RealtimeEntity =
   'project' | 'task' | 'dependency' | 'event' | 'member' | 'invitation' | 'revision' | 'version';
 
 /**
- * How it changed. `resync`: a request failed part-way (5xx) and may have saved some of its work,
- * so whoever has the project open should load it again.
+ * How it changed. `resync`: a request failed (5xx); a member change may have saved part of its work
+ * (a write to the project's content is one transaction and saved nothing), so whoever has the
+ * project open should load it again.
  */
 export type RealtimeAction = 'create' | 'update' | 'delete' | 'resync';
 

@@ -28,7 +28,7 @@ describe('EventsService', () => {
     repo.create.mockImplementation((values: object) => values);
     repo.save.mockImplementation((value: object) => Promise.resolve({ id: 'e1', ...value }));
     repo.manager.exists.mockResolvedValue(true);
-    service = new EventsService(repo as never);
+    service = new EventsService({ repo: () => repo } as never);
   });
 
   it('lists the earliest events first', async () => {

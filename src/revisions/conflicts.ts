@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { Request } from 'express';
-import type { DataSource } from 'typeorm';
+import type { EntityManager } from 'typeorm';
 import type { RealtimeEntity } from '../realtime/realtime.types.js';
 import {
   EVENT_FIELDS,
@@ -101,7 +101,7 @@ function currentOf(now: Snapshot, target: Target): Record<string, unknown> | nul
  * changes. The answer says who, which fields, and carries the row as it is now with its version.
  */
 export async function assertNoConflict(
-  db: DataSource,
+  db: EntityManager,
   now: Snapshot,
   target: Target,
   seen: number,

@@ -41,7 +41,7 @@ describe('TaskService.create', () => {
     scheduler.saveAttached.mockImplementation((task: object) =>
       Promise.resolve({ id: 't1', ...task }),
     );
-    service = new TaskService(repo as never, scheduler as never);
+    service = new TaskService({ repo: () => repo } as never, scheduler as never);
   });
 
   it('gives a task from the form progress 0 and the first order, so the insert has every required column', async () => {
@@ -115,7 +115,7 @@ describe('TaskService.setParent', () => {
     vi.resetAllMocks();
     repo.save.mockImplementation((task: object) => Promise.resolve(task));
     scheduler.saveAttached.mockImplementation((task: object) => Promise.resolve(task));
-    service = new TaskService(repo as never, scheduler as never);
+    service = new TaskService({ repo: () => repo } as never, scheduler as never);
   });
 
   it('puts the task under the group through the scheduler, which stretches the group', async () => {
@@ -170,7 +170,7 @@ describe('TaskService.update', () => {
     repo.save.mockImplementation((task: object) => Promise.resolve(task));
     repo.findOneByOrFail.mockResolvedValue(stored());
     scheduler.applyDateEdit.mockImplementation((task: object) => Promise.resolve(task));
-    service = new TaskService(repo as never, scheduler as never);
+    service = new TaskService({ repo: () => repo } as never, scheduler as never);
   });
 
   it('changes only the fields that were sent', async () => {
@@ -246,7 +246,7 @@ describe('TaskService.remove', () => {
     repo.manager.transaction.mockImplementation((work: (m: typeof manager) => unknown) =>
       work(manager),
     );
-    service = new TaskService(repo as never, scheduler as never);
+    service = new TaskService({ repo: () => repo } as never, scheduler as never);
   });
 
   it('fits the group the task was in to the tasks that are left, in the same transaction', async () => {
@@ -345,7 +345,7 @@ describe('TaskService.move', () => {
         return task;
       },
     );
-    service = new TaskService(repo as never, scheduler as never);
+    service = new TaskService({ repo: () => repo } as never, scheduler as never);
   });
 
   it('puts a task at a new place in its level and numbers the level again', async () => {

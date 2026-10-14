@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { DatabaseModule } from '../database/database.module.js';
 import { TaskDependency } from '../dependencies/entities/task-dependency.entity.js';
 import { Task } from '../tasks/entities/task.entity.js';
 import { TaskScheduler } from './task-scheduler.service.js';
@@ -11,7 +12,7 @@ import { TaskScheduler } from './task-scheduler.service.js';
  * their services, only their entities (the rows it reads and writes).
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([Task, TaskDependency])],
+  imports: [DatabaseModule, TypeOrmModule.forFeature([Task, TaskDependency])],
   providers: [TaskScheduler],
   exports: [TaskScheduler],
 })

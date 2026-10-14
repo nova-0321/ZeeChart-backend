@@ -1,6 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { RequestTransaction } from '../database/request-transaction.js';
 import { rejectNulls } from '../common/reject-nulls.js';
 import { Project } from '../projects/entities/project.entity.js';
 import type { CreateEventDto } from './dto/create-event.dto.js';
@@ -11,10 +10,11 @@ const day = (date: string) => String(date).slice(0, 10);
 
 @Injectable()
 export class EventsService {
-  constructor(
-    @InjectRepository(ProjectEvent)
-    private readonly eventRepo: Repository<ProjectEvent>,
-  ) {}
+  constructor(private readonly tx: RequestTransaction) {}
+
+  private get eventRepo() {
+    return this.tx.repo(ProjectEvent);
+  }
 
   /** The project's events, the earliest first. */
   findByProject(projectId: string) {
