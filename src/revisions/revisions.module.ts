@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module.js';
+import { DatabaseModule } from '../database/database.module.js';
 import { DependenciesModule } from '../dependencies/dependencies.module.js';
 import { ProjectEvent } from '../events/entities/project-event.entity.js';
 import { EventsModule } from '../events/events.module.js';
@@ -25,6 +26,8 @@ import { UndoService } from './undo.service.js';
   imports: [
     // AuthGuard (and the JwtService it needs).
     AuthModule,
+    // ProjectWriteLock, for the interceptor.
+    DatabaseModule,
     TypeOrmModule.forFeature([Revision, ProjectVersion, Task, ProjectEvent]),
     // A restore goes through the same services as any change.
     TaskModule,
