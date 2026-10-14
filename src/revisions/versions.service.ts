@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { EntityManager } from 'typeorm';
 import { RequestTransaction } from '../database/request-transaction.js';
@@ -7,6 +7,7 @@ import { roleIn } from '../projects/project-access.js';
 import { assertNameFree, ProjectsService } from '../projects/projects.service.js';
 import { asVersionDto, type VersionDto, type VersionSummaryDto } from './dto/version.dto.js';
 import { ProjectVersion, type VersionKind } from './entities/project-version.entity.js';
+import { KEEP_MANUAL_VERSIONS, MAX_STARRED_VERSIONS } from './history-limits.js';
 import type { Snapshot } from './revision-diff.js';
 import { loadSnapshot } from './revision-state.js';
 import { setTaskParent, writeEvent, writeLink, writeTask } from './revision-write.js';
@@ -85,32 +86,56 @@ export class VersionsService {
     return asVersionDto(version);
   }
 
+  /** Stars or unstars it. A star keeps a version for good, so only MAX_STARRED_VERSIONS at once. */
   async star(id: string, starred: boolean): Promise<VersionDto> {
-    const { affected } = await this.versionRepo.update({ id }, { starred });
-    if (!affected) throw new NotFoundException('Not found');
+    const version = await this.versionRepo.findOneBy({ id });
+    if (!version) throw new NotFoundException('Not found');
+    if (starred && !version.starred) {
+      const count = await this.versionRepo.countBy({ projectId: version.projectId, starred: true });
+      if (count >= MAX_STARRED_VERSIONS) {
+        throw new ConflictException(
+          `A project can have ${MAX_STARRED_VERSIONS} starred versions at most. Unstar one first`,
+        );
+      }
+    }
+    await this.versionRepo.update({ id }, { starred });
     return this.get(id);
   }
 
-  /** "Save a version now": the project as it is, even if no version differs from it yet. */
-  async saveNow(projectId: string, userId: string): Promise<VersionDto> {
+  /**
+   * "Save a version now": the project as it is, kept like every version saved by hand. When the
+   * newest version already holds exactly this, that one is kept instead (marked as saved by hand,
+   * so it isn't let go like an auto one): no second copy of the same project.
+   */
+  async saveNow(
+    projectId: string,
+    userId: string,
+  ): Promise<{ version: VersionDto; created: boolean }> {
     const snapshot = await loadSnapshot(this.tx.manager, projectId);
     if (!snapshot.project) throw new NotFoundException('Not found');
-    const version = await this.save(
-      projectId,
-      'manual',
-      contentOf({ ...snapshot, project: snapshot.project }),
-      userId,
-    );
-    return this.get(version.id);
+    const content = contentOf({ ...snapshot, project: snapshot.project });
+    const latest = await this.versionRepo.findOne({
+      where: { projectId },
+      order: { number: 'DESC' },
+    });
+    if (latest && sameContent(latest.content, content)) {
+      if (latest.kind !== 'manual') {
+        await this.versionRepo.update({ id: latest.id }, { kind: 'manual' });
+      }
+      return { version: await this.get(latest.id), created: false };
+    }
+    const version = await this.save(projectId, 'manual', content, userId);
+    return { version: await this.get(version.id), created: true };
   }
 
   /**
    * After a change (RevisionInterceptor gives the project as it is now): saved as an auto version
    * when the newest version is older than AUTO_EVERY_MS (or there is none), unless nothing differs
-   * from it. Never throws for the caller: a version not saved only means fewer to go back to.
+   * from it. Answers whether it saved one. Never throws for the caller: a version not saved only
+   * means fewer to go back to.
    */
-  async autoSave(projectId: string, after: Snapshot, userId: string | null): Promise<void> {
-    if (!after.project) return;
+  async autoSave(projectId: string, after: Snapshot, userId: string | null): Promise<boolean> {
+    if (!after.project) return false;
     // Its number, age and size first: the whole content is read only when a version is due.
     const [head] = await this.tx.manager.query<{ number: number; due: boolean; tasks: number }[]>(
       `SELECT "number", now() - "createdAt" >= make_interval(secs => $2) AS "due",
@@ -122,13 +147,14 @@ export class VersionsService {
     // otherwise the history would show nothing of the work for its first 10 minutes). The age is
     // worked out by the database (whatever time zone this server runs in).
     const fresh = head?.number === 1 && head.tasks === 0;
-    if (head && !fresh && !head.due) return;
+    if (head && !fresh && !head.due) return false;
     const content = contentOf({ ...after, project: after.project });
     const latest = head
       ? await this.versionRepo.findOne({ where: { projectId }, order: { number: 'DESC' } })
       : null;
-    if (latest && sameContent(latest.content, content)) return;
+    if (latest && sameContent(latest.content, content)) return false;
     await this.save(projectId, 'auto', content, userId);
+    return true;
   }
 
   /**
@@ -304,7 +330,8 @@ export class VersionsService {
 
   /**
    * A new version, numbered after the project's last (a lock keeps two saves apart). Then the
-   * oldest are let go: starred and manual versions stay, and the KEEP_RECENT newest of the others.
+   * oldest are let go: starred versions stay, and the KEEP_MANUAL_VERSIONS newest saved by hand and
+   * the KEEP_RECENT newest of the others.
    */
   private save(
     projectId: string,
@@ -333,6 +360,13 @@ export class VersionsService {
             WHERE "projectId" = $1 AND NOT "starred" AND "kind" <> 'manual'
             ORDER BY "number" DESC OFFSET $2)`,
         [projectId, KEEP_RECENT],
+      );
+      await manager.query(
+        `DELETE FROM "project_versions" WHERE "id" IN (
+           SELECT "id" FROM "project_versions"
+            WHERE "projectId" = $1 AND NOT "starred" AND "kind" = 'manual'
+            ORDER BY "number" DESC OFFSET $2)`,
+        [projectId, KEEP_MANUAL_VERSIONS],
       );
       return saved;
     });

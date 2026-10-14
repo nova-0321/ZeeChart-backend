@@ -281,6 +281,8 @@ describe('Undo, redo and versions (e2e)', () => {
       await newTask(owner, projectId, { name });
     };
     await auto('A'); // v2 auto
+    // A change first: saving what v2 already holds would keep v2 itself, not make v3.
+    await newTask(owner, projectId, { name: 'A2' });
     await save(); // v3 manual
     await auto('B'); // v4 auto
     await auto('C'); // v5 auto

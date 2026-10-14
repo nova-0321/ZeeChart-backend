@@ -167,7 +167,8 @@ describe('A write and its history: all or nothing (e2e)', () => {
   it('a version copy that fails while filling the new project leaves no project', async () => {
     const projectId = await newProject();
     await newTask(projectId, 'T');
-    const version = (await as(http().post(`/projects/${projectId}/versions`)).expect(201)).body as {
+    // 200: the version made by that change already holds this (no copy of it is made).
+    const version = (await as(http().post(`/projects/${projectId}/versions`)).expect(200)).body as {
       id: string;
     };
     const count = async () =>

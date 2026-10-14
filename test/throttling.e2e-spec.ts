@@ -7,6 +7,8 @@ import request from 'supertest';
 import { configureProxy } from '../src/common/proxy.js';
 import { EMAIL_LIMIT } from '../src/common/throttling.js';
 import { createValidationPipe } from '../src/common/validation.js';
+import { SAVE_VERSION_LIMIT } from '../src/revisions/history-limits.js';
+import { deleteTestAccounts } from './cleanup.js';
 
 // The rate limits, switched on (the other e2e tests run without them), behind one trusted proxy as
 // on Render: the test client plays the proxy, and X-Forwarded-For carries the caller's address.
@@ -78,5 +80,52 @@ describe('Rate limits behind a proxy (e2e)', () => {
     expect((await signIn('192.0.2.201', ` ${email.toUpperCase()} `)).status).toBe(429);
     // Another email from those addresses is not affected.
     expect((await signIn('192.0.2.1')).status).toBe(401);
+  });
+});
+
+describe('"Save a version now" rate limit (e2e)', () => {
+  let app: INestApplication | undefined;
+  const saved = { NODE_ENV: process.env.NODE_ENV, JWT_SECRET: process.env.JWT_SECRET };
+
+  beforeAll(async () => {
+    process.env.NODE_ENV = 'development';
+    process.env.JWT_SECRET ??= randomBytes(48).toString('base64');
+    const { AppModule } = await import('../src/app.module.js');
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const nest = moduleRef.createNestApplication<NestExpressApplication>();
+    nest.useGlobalPipes(createValidationPipe());
+    await nest.listen(0);
+    app = nest;
+  });
+
+  afterAll(async () => {
+    if (app) await deleteTestAccounts(app, 'zzthr-save-');
+    await app?.close();
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  it(`allows ${SAVE_VERSION_LIMIT} a minute: each one stores the whole project`, async () => {
+    const http = () => request(app!.getHttpServer());
+    const { accessToken } = (
+      await http()
+        .post('/auth/signup')
+        .send({
+          name: 'Saver',
+          email: `zzthr-save-${randomUUID()}@example.com`,
+          password: 'pass-word-1',
+        })
+        .expect(201)
+    ).body as { accessToken: string };
+    const as = (call: request.Test) => call.set('Authorization', `Bearer ${accessToken}`);
+    const { id } = (await as(http().post('/projects')).send({ name: `Save ${randomUUID()}` }))
+      .body as { id: string };
+    for (let i = 0; i < SAVE_VERSION_LIMIT; i++) {
+      // Nothing changes, so each keeps v1 (200): it still counts.
+      await as(http().post(`/projects/${id}/versions`)).expect(200);
+    }
+    await as(http().post(`/projects/${id}/versions`)).expect(429);
   });
 });

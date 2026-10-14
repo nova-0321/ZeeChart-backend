@@ -2,14 +2,18 @@ import {
   Body,
   Controller,
   Get,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
+import type { Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import {
@@ -23,10 +27,11 @@ import { Broadcast, NoBroadcast } from '../realtime/broadcast.decorator.js';
 import {
   type RestoreVersionResultDto,
   StarVersionDto,
-  type VersionDto,
+  VersionDto,
   type VersionSummaryDto,
 } from './dto/version.dto.js';
 import { ProjectVersion } from './entities/project-version.entity.js';
+import { SAVE_VERSION_LIMIT } from './history-limits.js';
 import type { RevisionRequest } from './revision.interceptor.js';
 import { VersionsService } from './versions.service.js';
 
@@ -47,14 +52,24 @@ export class ProjectVersionsController {
 
   /** "Save a version now": the project as it is. */
   @Post()
+  @ApiCreatedResponse({ type: VersionDto, description: 'A new version' })
+  @ApiOkResponse({
+    type: VersionDto,
+    description: 'Nothing changed since the newest version: that one, kept as saved by hand',
+  })
+  // Each one stores the whole project: a few a minute is plenty.
+  @Throttle({ default: { limit: SAVE_VERSION_LIMIT, ttl: 60_000 } })
   // Saving a version records the plan as it is: allowed on an archived project.
   @ProjectAccess('editor', projectInParam(), { whileArchived: true })
   @Broadcast({ entity: 'version', action: 'create', project: projectInParam() })
-  save(
+  async save(
     @Param('id', ParseUUIDPipe) projectId: string,
     @CurrentUser() userId: string,
+    @Res({ passthrough: true }) response: Response,
   ): Promise<VersionDto> {
-    return this.versions.saveNow(projectId, userId);
+    const { version, created } = await this.versions.saveNow(projectId, userId);
+    if (!created) response.status(HttpStatus.OK);
+    return version;
   }
 }
 

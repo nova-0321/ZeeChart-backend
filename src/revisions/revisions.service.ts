@@ -25,6 +25,7 @@ import {
   stateOf,
   type TaskState,
 } from './revision-diff.js';
+import { KEEP_REVISION_DAYS, UNDO_DEPTH } from './history-limits.js';
 
 /** Where each kind of row is stored. */
 export const TABLES = {
@@ -140,6 +141,43 @@ export class RevisionsService {
       }
     });
     return versions;
+  }
+
+  /**
+   * Lets a project's old revisions go (#54), keeping what still reads them:
+   * - anything newer than KEEP_REVISION_DAYS: an open tab may still save from a version they made,
+   *   and the conflict check (#21) needs them to see who changed what since;
+   * - each person's UNDO_DEPTH newest batches, and the batches those undo or redo (`ofBatch`): what
+   *   undo and redo read (UndoService);
+   * - the newest revision of every row that is still there (its newest is not its deletion): the
+   *   next one is numbered on from it (record). A row that is gone keeps nothing past the rules
+   *   above, so no history is kept forever. Every deletion is recorded (a write can't succeed
+   *   without its history), so the history alone tells which rows are gone.
+   * Older history is let go: the project's versions keep the long view. Answers how many went.
+   */
+  async prune(
+    projectId: string,
+    keep = { days: KEEP_REVISION_DAYS, batches: UNDO_DEPTH },
+  ): Promise<number> {
+    const [, deleted] = await this.tx.manager.query<[unknown, number]>(
+      `WITH "batches" AS (
+         SELECT "batchId", "ofBatch",
+                row_number() OVER (PARTITION BY "changedById" ORDER BY MIN("createdAt") DESC) AS "rank"
+           FROM "revisions" WHERE "projectId" = $1
+          GROUP BY "batchId", "ofBatch", "changedById"),
+       "kept" AS (
+         SELECT "batchId" FROM "batches" WHERE "rank" <= $3
+         UNION SELECT "ofBatch" FROM "batches" WHERE "rank" <= $3 AND "ofBatch" IS NOT NULL)
+       DELETE FROM "revisions" r
+        WHERE r."projectId" = $1
+          AND r."createdAt" < now() - make_interval(days => $2)
+          AND r."batchId" NOT IN (SELECT "batchId" FROM "kept")
+          AND (r."action" = 'delete'
+               OR EXISTS (SELECT 1 FROM "revisions" n
+                           WHERE n."entityId" = r."entityId" AND n."version" > r."version"))`,
+      [projectId, keep.days, keep.batches],
+    );
+    return deleted;
   }
 
   /**

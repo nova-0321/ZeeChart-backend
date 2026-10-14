@@ -1443,8 +1443,18 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Nothing changed since the newest version: that one, kept as saved by hand",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionDto"
+                }
+              }
+            }
+          },
           "201": {
-            "description": "",
+            "description": "A new version",
             "content": {
               "application/json": {
                 "schema": {

@@ -127,7 +127,8 @@ describe('Fixes (e2e)', () => {
     await as(owner, http().patch(`/projects/${projectId}`))
       .send({ name: long })
       .expect(200);
-    const version = (await as(owner, http().post(`/projects/${projectId}/versions`)).expect(201))
+    // 200: the version made by that change already holds this (no copy of it is made).
+    const version = (await as(owner, http().post(`/projects/${projectId}/versions`)).expect(200))
       .body as { id: string };
     const copy = (await as(owner, http().post(`/versions/${version.id}/copy`)).expect(201))
       .body as { name: string };
