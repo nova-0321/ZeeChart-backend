@@ -165,7 +165,7 @@ describe('TaskService.setParent on groups that loop (old data)', () => {
       findOneBy: vi.fn(({ id }: { id: string }) => Promise.resolve(rows[id] ?? null)),
     };
     const scheduler = { saveAttached: vi.fn() };
-    const service = new TaskService(repo as never, scheduler as never);
+    const service = new TaskService({ repo: () => repo } as never, scheduler as never);
     await expect(service.setParent('t', 'p')).rejects.toThrow(/groups loop into each other/);
     expect(scheduler.saveAttached).not.toHaveBeenCalled();
     expect(repo.findOneBy.mock.calls.length).toBeLessThan(5);
