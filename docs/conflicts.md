@@ -63,6 +63,6 @@ To keep your change anyway, send it again with `If-Match: 7` (the `version` in `
 
 ## Limits
 
-- The check and the write happen one after another per project, on one server instance (the same
-  limit as the live connection). Several instances would need a database lock instead.
+- The check and the write happen one after another per project, under a database lock, so this
+  holds with several server instances too.
 - Creating a row has nothing to check.

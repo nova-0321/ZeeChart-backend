@@ -14,6 +14,12 @@ the `DB_*` values from `ConfigService` and opens one shared `DataSource`
 entity with `forFeature`, which Nest injects into the service, and the service
 into the controller.
 
+`DatabaseModule` also provides `ProjectWriteLock`, which has a second, small
+pool of its own. It only ever holds the per-project write lock that
+`RevisionInterceptor` takes around every write, and never runs the app's
+queries: a lock held on a connection of the shared pool would leave the write
+holding it waiting forever for another one when a burst fills the pool.
+
 ```mermaid
 flowchart TB
     App[AppModule]
@@ -83,7 +89,7 @@ sequenceDiagram
 | Service    | Business rules: lookups, checks, throwing `NotFoundException`, combining repositories. | Know about HTTP requests or responses. | `charts.service.ts`   |
 | Repository | Typed queries for one entity, provided by TypeORM.                   | Be written by hand for simple CRUD.                 | injected, no file     |
 | Entity     | Maps a class to a table and its columns.                             | Change the schema without a migration (`synchronize` is off). | `chart.entity.ts` |
-| DataSource | One shared connection pool for the whole app.                        | Be created per feature.                             | `database.module.ts`  |
+| DataSource | One shared connection pool for the whole app (plus `ProjectWriteLock`'s own small pool, only for the per-project write lock). | Be created per feature.                             | `database.module.ts`  |
 
 ## The example feature in code
 

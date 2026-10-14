@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { buildDataSourceOptions } from './database.config.js';
+import { ProjectWriteLock } from './project-write-lock.js';
 
 @Module({
   imports: [
@@ -18,5 +19,7 @@ import { buildDataSourceOptions } from './database.config.js';
       }),
     }),
   ],
+  providers: [ProjectWriteLock],
+  exports: [ProjectWriteLock],
 })
 export class DatabaseModule {}

@@ -9,7 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { from, lastValueFrom, type Observable } from 'rxjs';
 import { DataSource } from 'typeorm';
 import type { AuthedRequest } from '../auth/auth.guard.js';
-import { withProjectWriteLock } from '../common/project-write-lock.js';
+import { ProjectWriteLock } from '../database/project-write-lock.js';
 import { BROADCAST, type BroadcastOptions } from '../realtime/broadcast.decorator.js';
 import type { Snapshot } from './revision-diff.js';
 import { assertNoConflict, targetOf, versionIn } from './conflicts.js';
@@ -38,13 +38,9 @@ export interface RevisionRequest extends AuthedRequest {
  * other rows too (a group stretched, a linked task pushed) is in the history as well, with no
  * route having to remember it.
  *
- * Writes to one project run one after another: the whole request body below, from the conflict
- * check (#21) through the handler's own write to recording its history, runs inside
- * withProjectWriteLock - a real Postgres lock, not an in-memory queue, so this holds across server
- * instances too (#50). The snapshots of one request never take in another's changes, and a write
- * can no longer slip past the conflict check while a concurrent one on a different instance is
- * mid-flight. The history is written before the answer goes out. Failing to write it never fails
- * the change: it is logged.
+ * Writes to one project run one after another, on every server instance (ProjectWriteLock), so the
+ * snapshots of one request never take in another's changes. The history is written before the
+ * answer goes out. Failing to write it never fails the change: it is logged.
  */
 @Injectable()
 export class RevisionInterceptor implements NestInterceptor {
@@ -53,6 +49,7 @@ export class RevisionInterceptor implements NestInterceptor {
   constructor(
     private readonly reflector: Reflector,
     private readonly db: DataSource,
+    private readonly lock: ProjectWriteLock,
     private readonly revisions: RevisionsService,
     private readonly versions: VersionsService,
     private readonly realtime: RealtimeService,
@@ -79,10 +76,10 @@ export class RevisionInterceptor implements NestInterceptor {
     const projectId = await options.project(request, this.db).catch(() => undefined);
     const handle = () => lastValueFrom(next.handle(), { defaultValue: undefined });
     if (!projectId) return handle();
-    // Checked first, outside the queue: a malformed header is the request's own mistake.
+    // Checked first, outside the lock: a malformed header is the request's own mistake.
     const seen = versionIn(request);
     const target = seen === undefined ? null : targetOf(options.entity, request);
-    return withProjectWriteLock(this.db, projectId, async () => {
+    return this.lock.run(projectId, async () => {
       const before = await this.snapshot(projectId);
       // Made from an older version: refused when someone else changed what it changes (#21).
       // Inside the lock, so nothing can change in between the check and the write.
