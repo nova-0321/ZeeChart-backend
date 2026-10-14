@@ -9,6 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { from, lastValueFrom, type Observable } from 'rxjs';
 import { DataSource } from 'typeorm';
 import type { AuthedRequest } from '../auth/auth.guard.js';
+import { withProjectWriteLock } from '../common/project-write-lock.js';
 import { BROADCAST, type BroadcastOptions } from '../realtime/broadcast.decorator.js';
 import type { Snapshot } from './revision-diff.js';
 import { assertNoConflict, targetOf, versionIn } from './conflicts.js';
@@ -37,15 +38,17 @@ export interface RevisionRequest extends AuthedRequest {
  * other rows too (a group stretched, a linked task pushed) is in the history as well, with no
  * route having to remember it.
  *
- * Writes to one project run one after another here, so the snapshots of one request never take in
- * another's changes (one server instance; the same assumption as the live rooms). The history is
- * written before the answer goes out. Failing to write it never fails the change: it is logged.
+ * Writes to one project run one after another: the whole request body below, from the conflict
+ * check (#21) through the handler's own write to recording its history, runs inside
+ * withProjectWriteLock - a real Postgres lock, not an in-memory queue, so this holds across server
+ * instances too (#50). The snapshots of one request never take in another's changes, and a write
+ * can no longer slip past the conflict check while a concurrent one on a different instance is
+ * mid-flight. The history is written before the answer goes out. Failing to write it never fails
+ * the change: it is logged.
  */
 @Injectable()
 export class RevisionInterceptor implements NestInterceptor {
   private readonly logger = new Logger(RevisionInterceptor.name);
-  /** The last write queued for each project. */
-  private readonly queues = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly reflector: Reflector,
@@ -79,10 +82,10 @@ export class RevisionInterceptor implements NestInterceptor {
     // Checked first, outside the queue: a malformed header is the request's own mistake.
     const seen = versionIn(request);
     const target = seen === undefined ? null : targetOf(options.entity, request);
-    return this.inTurn(projectId, async () => {
+    return withProjectWriteLock(this.db, projectId, async () => {
       const before = await this.snapshot(projectId);
       // Made from an older version: refused when someone else changed what it changes (#21).
-      // Inside the queue, so nothing can change in between the check and the write.
+      // Inside the lock, so nothing can change in between the check and the write.
       if (seen !== undefined && target && before) {
         await assertNoConflict(this.db, before, target, seen, request.userId);
       }
@@ -155,18 +158,6 @@ export class RevisionInterceptor implements NestInterceptor {
       this.logger.error(`Could not read ${projectId} for its history`, error as Error);
       return null;
     }
-  }
-
-  /** Runs `work` after the writes to the same project queued before it (whatever their outcome). */
-  private inTurn<T>(projectId: string, work: () => Promise<T>): Promise<T> {
-    const previous = this.queues.get(projectId) ?? Promise.resolve();
-    const run = previous.then(work, work);
-    const settled = run.catch(() => undefined);
-    this.queues.set(projectId, settled);
-    void settled.then(() => {
-      if (this.queues.get(projectId) === settled) this.queues.delete(projectId);
-    });
-    return run;
   }
 }
 
