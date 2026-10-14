@@ -4,6 +4,7 @@ import type { DependencyDto } from './dto/dependency.dto.js';
 import type { UpdateDependencyDto } from './dto/update-dependency.dto.js';
 import { TaskDependency } from './entities/task-dependency.entity.js';
 import { Task } from '../tasks/entities/task.entity.js';
+import { groupLoop } from '../tasks/group-loop.js';
 import { TaskScheduler } from '../scheduling/task-scheduler.service.js';
 
 @Injectable()
@@ -93,11 +94,17 @@ export class DependencyService {
     await this.dependencyRepo.remove(dependency);
   }
 
-  /** Whether `descendantId` is somewhere below `task` in the group tree. */
+  /**
+   * Whether `descendantId` is somewhere below `task` in the group tree. A chain that comes back to
+   * a task it passed (a loop already in the data) is refused: there is no right answer on it.
+   */
   private async isAncestor(task: Task, descendantId: string) {
+    const seen = new Set<string>();
     let current = await this.taskRepo.findOneBy({ id: descendantId });
-    for (let guard = 0; current?.parentId && guard < 100; guard++) {
+    while (current?.parentId) {
       if (current.parentId === task.id) return true;
+      if (seen.has(current.id)) throw groupLoop();
+      seen.add(current.id);
       current = await this.taskRepo.findOneBy({ id: current.parentId });
     }
     return false;

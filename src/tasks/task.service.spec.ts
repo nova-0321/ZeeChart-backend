@@ -152,6 +152,26 @@ describe('TaskService.setParent', () => {
   });
 });
 
+describe('TaskService.setParent on groups that loop (old data)', () => {
+  it('refuses a move under a group whose chain comes back to itself, instead of walking it forever', async () => {
+    // p is inside q and q inside p; t is in neither, so the walk up from p never meets t.
+    const rows: Record<string, object> = {
+      t: { id: 't', projectId: PROJECT_ID, parentId: null, type: 'task' },
+      p: { id: 'p', projectId: PROJECT_ID, parentId: 'q', type: 'group' },
+      q: { id: 'q', projectId: PROJECT_ID, parentId: 'p', type: 'group' },
+    };
+    const repo = {
+      findOneByOrFail: vi.fn(({ id }: { id: string }) => Promise.resolve(rows[id])),
+      findOneBy: vi.fn(({ id }: { id: string }) => Promise.resolve(rows[id] ?? null)),
+    };
+    const scheduler = { saveAttached: vi.fn() };
+    const service = new TaskService(repo as never, scheduler as never);
+    await expect(service.setParent('t', 'p')).rejects.toThrow(/groups loop into each other/);
+    expect(scheduler.saveAttached).not.toHaveBeenCalled();
+    expect(repo.findOneBy.mock.calls.length).toBeLessThan(5);
+  });
+});
+
 describe('TaskService.update', () => {
   const repo = { findOneByOrFail: vi.fn(), save: vi.fn() };
   const scheduler = { applyDateEdit: vi.fn() };

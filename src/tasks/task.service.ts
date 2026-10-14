@@ -6,6 +6,7 @@ import { Project } from '../projects/entities/project.entity.js';
 import { TaskDto } from './dto/task.dto.js';
 import type { UpdateTaskDto } from './dto/update-task.dto.js';
 import { Task } from './entities/task.entity.js';
+import { groupLoop } from './group-loop.js';
 import { TaskScheduler } from '../scheduling/task-scheduler.service.js';
 
 /** The day ("YYYY-MM-DD") of a date as the API takes it: what is stored is its first ten characters. */
@@ -232,12 +233,16 @@ export class TaskService {
 
     if (!taskId) return parent;
 
-    // The new parent must not be a descendant of this task.
+    // The new parent must not be a descendant of this task. A chain that comes back to a task it
+    // passed (a loop already in the data) is refused, not followed forever.
+    const seen = new Set<string>();
     let current: Task | null = parent;
     while (current?.parentId) {
       if (current.parentId === taskId) {
         throw new BadRequestException('Moving here would create a cycle');
       }
+      if (seen.has(current.id)) throw groupLoop();
+      seen.add(current.id);
       current = await this.taskRepo.findOneBy({ id: current.parentId });
     }
     return parent;

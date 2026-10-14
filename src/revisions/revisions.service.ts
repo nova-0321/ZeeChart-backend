@@ -222,7 +222,9 @@ export class RevisionsService {
     // The group it was in, if it is still there to hold it (and wouldn't hold its own group).
     let parentId = state.parentId;
     if (parentId && !(await this.canHold(projectId, parentId, state.id))) {
-      skipped.push('its group (gone, or no longer a group): it stays where it is');
+      skipped.push(
+        'its group (gone, no longer a group, or in a loop of groups): it stays where it is',
+      );
       parentId = current ? current.parentId : null;
     }
 
@@ -301,12 +303,17 @@ export class RevisionsService {
     }
   }
 
-  /** Whether `parentId` is a group of the project that may hold `taskId` (not inside it). */
+  /**
+   * Whether `parentId` is a group of the project that may hold `taskId` (not inside it). A group
+   * whose chain loops (a loop already in the data) can't: the task stays where it is.
+   */
   private async canHold(projectId: string, parentId: string, taskId: string) {
     let node = await this.taskRepo.findOneBy({ id: parentId });
     if (!node || node.projectId !== projectId || node.type !== 'group') return false;
+    const seen = new Set<string>();
     while (node) {
-      if (node.id === taskId) return false;
+      if (node.id === taskId || seen.has(node.id)) return false;
+      seen.add(node.id);
       node = node.parentId ? await this.taskRepo.findOneBy({ id: node.parentId }) : null;
     }
     return true;

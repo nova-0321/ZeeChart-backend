@@ -422,3 +422,23 @@ describe('a group that stretches keeps its own incoming links', () => {
     expect(() => planAttach(outside, [link('a', 'g')], 't')).toThrow(/would have to start before/);
   });
 });
+
+describe('groups that loop into each other (old data)', () => {
+  // p is inside q and q inside p: no write makes this now, but old data may hold it.
+  const looped = [
+    task('x', '2026-11-02', '2026-11-03'),
+    task('p', '2026-11-01', '2026-11-01', { type: 'group', parentId: 'q' }),
+    task('q', '2026-11-01', '2026-11-01', { type: 'group', parentId: 'p' }),
+  ];
+
+  it('still comes to an end when a link pushes one of them (each task is moved once)', () => {
+    let outcome: unknown;
+    try {
+      outcome = planReschedule(looped, [link('x', 'p')], ['x']);
+    } catch (error) {
+      outcome = error;
+    }
+    // Either answer is fine; what matters is that there is one.
+    expect(outcome instanceof Map || outcome instanceof ScheduleError).toBe(true);
+  });
+});
