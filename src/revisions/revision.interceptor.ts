@@ -105,11 +105,21 @@ export class RevisionInterceptor implements NestInterceptor {
     // copy to go back to, so failing to make one only means one fewer, and fails nothing.
     const saved = after as Snapshot | null;
     if (saved) {
-      await this.versions
+      const versioned = await this.versions
         .autoSave(projectId, saved, request.userId ?? null)
-        .catch((error: unknown) =>
-          this.logger.error(`Could not save a version of ${projectId}`, error as Error),
-        );
+        .catch((error: unknown) => {
+          this.logger.error(`Could not save a version of ${projectId}`, error as Error);
+          return false;
+        });
+      // As often as a version is saved (every 10 minutes at most): the old history it now covers is
+      // let go (RevisionsService.prune). Failing only means it is tried again next time.
+      if (versioned) {
+        await this.revisions
+          .prune(projectId)
+          .catch((error: unknown) =>
+            this.logger.error(`Could not let old history of ${projectId} go`, error as Error),
+          );
+      }
     }
     return body;
   }

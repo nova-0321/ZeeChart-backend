@@ -23,9 +23,7 @@ import {
 } from './revision-diff.js';
 import { loadSnapshot } from './revision-state.js';
 import { setTaskParent, writeEvent, writeLink, writeTask } from './revision-write.js';
-
-/** How far back the undo / redo stacks are read (batches of one person in one project). */
-const STACK_DEPTH = 200;
+import { UNDO_DEPTH } from './history-limits.js';
 
 /**
  * Undo and redo of one person's own changes in a project, whatever tab or device they made them
@@ -88,7 +86,7 @@ export class UndoService {
           GROUP BY "batchId", "batchKind", "ofBatch"
           ORDER BY "at" DESC LIMIT $3) recent
         ORDER BY "at" ASC`,
-      [projectId, userId, STACK_DEPTH],
+      [projectId, userId, UNDO_DEPTH],
     );
     const done: string[] = [];
     let undone: string[] = [];
