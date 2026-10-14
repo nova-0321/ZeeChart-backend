@@ -8,6 +8,7 @@ import { AuthService } from './auth.service.js';
 import { User } from './entities/user.entity.js';
 import { hashPassword, needsRehash, verifyPassword } from './password.js';
 import { hashWith } from '../../test/password-hashes.js';
+import { SessionEvents } from './token.js';
 
 const SECRET = 'test-secret-at-least-16';
 const ada = { name: 'Ada', email: 'ada@x.io', password: 'pass-word-1' };
@@ -15,6 +16,7 @@ const ada = { name: 'Ada', email: 'ada@x.io', password: 'pass-word-1' };
 describe('AuthService', () => {
   let service: AuthService;
   let jwt: JwtService;
+  let sessions: SessionEvents;
   const repo = {
     existsBy: vi.fn(),
     create: vi.fn((user: Partial<User>) => ({ ...user })),
@@ -22,19 +24,24 @@ describe('AuthService', () => {
     findOne: vi.fn(),
     findOneBy: vi.fn(),
     update: vi.fn(),
+    increment: vi.fn(),
   };
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    // clearAllMocks keeps implementations set by an earlier test: back to a plain success.
+    repo.increment.mockResolvedValue(undefined);
     jwt = new JwtService({ secret: SECRET, signOptions: { expiresIn: '1h' } });
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: getRepositoryToken(User), useValue: repo },
         { provide: JwtService, useValue: jwt },
+        SessionEvents,
       ],
     }).compile();
     service = module.get(AuthService);
+    sessions = module.get(SessionEvents);
   });
 
   it('sign-up stores a hash (not the password) and answers a token for the new user', async () => {
@@ -140,6 +147,57 @@ describe('AuthService', () => {
     });
   });
 
+  describe('sessions that can be ended (tokenVersion)', () => {
+    it('puts the tokenVersion of the account in the token it makes', async () => {
+      repo.findOne.mockResolvedValue({
+        id: 'u1',
+        name: 'Ada',
+        email: ada.email,
+        createdAt: new Date(),
+        tokenVersion: 4,
+        passwordHash: await hashPassword(ada.password),
+      });
+      const result = await service.signIn({ email: ada.email, password: ada.password });
+      await expect(jwt.verifyAsync(result.accessToken)).resolves.toMatchObject({
+        sub: 'u1',
+        tv: 4,
+      });
+    });
+
+    it('a new account starts at 0', async () => {
+      repo.existsBy.mockResolvedValue(false);
+      repo.save.mockImplementation((user: User) => Promise.resolve({ ...user, id: 'u9' }));
+      const result = await service.signUp(ada);
+      await expect(jwt.verifyAsync(result.accessToken)).resolves.toMatchObject({ tv: 0 });
+    });
+
+    it('signing out everywhere raises the number by one, and tells the live connection', async () => {
+      const heard: string[] = [];
+      sessions.onRevoked((userId) => heard.push(userId));
+      await service.signOutEverywhere('u1');
+      expect(repo.increment).toHaveBeenCalledWith({ id: 'u1' }, 'tokenVersion', 1);
+      expect(heard).toEqual(['u1']);
+    });
+
+    it('does not tell anyone when the number could not be raised', async () => {
+      const heard: string[] = [];
+      sessions.onRevoked((userId) => heard.push(userId));
+      repo.increment.mockRejectedValue(new Error('db down'));
+      await expect(service.signOutEverywhere('u1')).rejects.toThrow('db down');
+      expect(heard).toEqual([]);
+    });
+
+    it('a listener that fails does not fail the request that ended the sign-ins', async () => {
+      sessions.onRevoked(() => {
+        throw new Error('listener broke');
+      });
+      const heard: string[] = [];
+      sessions.onRevoked((userId) => heard.push(userId));
+      await expect(service.signOutEverywhere('u1')).resolves.toBeUndefined();
+      expect(heard).toEqual(['u1']);
+    });
+  });
+
   it('me: the user, or a 401 when the account no longer exists', async () => {
     repo.findOneBy.mockResolvedValue({
       id: 'u1',
@@ -156,7 +214,7 @@ describe('AuthService', () => {
 describe('AuthGuard', () => {
   const jwt = new JwtService({ secret: SECRET, signOptions: { expiresIn: '1h' } });
   // The account of a valid token exists (one query answering a row).
-  const db = { query: vi.fn().mockResolvedValue([{}]) };
+  const db = { query: vi.fn().mockResolvedValue([{ tokenVersion: 0 }]) };
   const guard = new AuthGuard(jwt, db as never);
   const contextWith = (authorization?: string) => {
     const request: { headers: { authorization?: string }; userId?: string } = {
@@ -178,6 +236,51 @@ describe('AuthGuard', () => {
     db.query.mockResolvedValueOnce([]);
     const { context } = contextWith(`Bearer ${await jwt.signAsync({ sub: 'gone' })}`);
     await expect(guard.canActivate(context)).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  describe('signing out everywhere (tokenVersion)', () => {
+    const tryToken = async (claims: object, accountVersion: number) => {
+      db.query.mockResolvedValueOnce([{ tokenVersion: accountVersion }]);
+      const { request, context } = contextWith(`Bearer ${await jwt.signAsync(claims)}`);
+      return { result: guard.canActivate(context), request };
+    };
+
+    it('lets a token through while its number is the one of the account', async () => {
+      const { result, request } = await tryToken({ sub: 'u1', tv: 3 }, 3);
+      await expect(result).resolves.toBe(true);
+      expect(request.userId).toBe('u1');
+    });
+
+    it('refuses a token made before the account signed out everywhere (401)', async () => {
+      const { result } = await tryToken({ sub: 'u1', tv: 3 }, 4);
+      await expect(result).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect((await tryToken({ sub: 'u1', tv: 0 }, 1)).result).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('refuses a token with a number the account has not reached (a made-up one)', async () => {
+      const { result } = await tryToken({ sub: 'u1', tv: 9 }, 3);
+      await expect(result).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('a token made before the number existed counts as 0: fine until the first sign-out', async () => {
+      await expect((await tryToken({ sub: 'u1' }, 0)).result).resolves.toBe(true);
+      await expect((await tryToken({ sub: 'u1' }, 1)).result).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('says the same as for an expired token, so it tells nothing about the account', async () => {
+      const revoked = (await tryToken({ sub: 'u1', tv: 0 }, 1)).result;
+      const expired = guard.canActivate(
+        contextWith(`Bearer ${await jwt.signAsync({ sub: 'u1' }, { expiresIn: -10 })}`).context,
+      );
+      const messages = await Promise.all(
+        [revoked, expired].map((p) => p.catch((error: Error) => error.message)),
+      );
+      expect(messages[0]).toBe(messages[1]);
+    });
   });
 
   it('refuses no token, another scheme, a forged token and an expired one', async () => {

@@ -86,6 +86,26 @@
         ]
       }
     },
+    "/auth/signout-all": {
+      "post": {
+        "operationId": "Auth_signOutEverywhere",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Sign out of every device: all tokens made so far stop working (this one too), and the account's\nopen live connections are closed. 204. Signing in again makes a new token.",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/auth/me": {
       "get": {
         "operationId": "Auth_me",
@@ -1940,6 +1960,10 @@
             "type": "string",
             "description": "The scrypt hash (see password.ts). Never selected unless asked for, never sent."
           },
+          "tokenVersion": {
+            "type": "number",
+            "description": "Raised to end every sign-in of this account at once (sign out everywhere): a token carries the\nnumber it was made with and works only while it is still the account's (see token.ts)."
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -1954,6 +1978,7 @@
           "name",
           "email",
           "passwordHash",
+          "tokenVersion",
           "createdAt",
           "updatedAt"
         ]

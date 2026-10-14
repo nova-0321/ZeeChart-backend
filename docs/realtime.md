@@ -196,6 +196,12 @@ the handler runs, so a delete still knows its project.
 - **The token is checked when connecting**, and the connection is closed when the token runs out
   (`disconnect` with the reason `io server disconnect`: the app then checks the session, which signs
   it out). It can't join a project it is not a member of.
+- **Signing out everywhere closes the connections.** `POST /auth/signout-all` raises the account's
+  `tokenVersion`, which ends every token made before it (the API and a new socket refuse them with
+  `Your session has ended. Sign in again`), and the gateway closes that account's open sockets at
+  once (they would otherwise stay until their token runs out). The auth module tells the gateway
+  through `SessionEvents` (auth/token.ts): the realtime module already depends on auth, so auth
+  can't call it directly.
 - **One server instance.** Rooms live in memory. Running several instances needs socket.io's Redis
   adapter.
 - **No conflict detection.** Two people saving the same task: the last save wins. Version checks
