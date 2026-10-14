@@ -1,6 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { RequestTransaction } from '../database/request-transaction.js';
 import type { DependencyDto } from './dto/dependency.dto.js';
 import type { UpdateDependencyDto } from './dto/update-dependency.dto.js';
 import { TaskDependency } from './entities/task-dependency.entity.js';
@@ -10,12 +9,17 @@ import { TaskScheduler } from '../scheduling/task-scheduler.service.js';
 @Injectable()
 export class DependencyService {
   constructor(
-    @InjectRepository(TaskDependency)
-    private readonly dependencyRepo: Repository<TaskDependency>,
-    @InjectRepository(Task)
-    private readonly taskRepo: Repository<Task>,
+    private readonly tx: RequestTransaction,
     private readonly scheduler: TaskScheduler,
   ) {}
+
+  private get dependencyRepo() {
+    return this.tx.repo(TaskDependency);
+  }
+
+  private get taskRepo() {
+    return this.tx.repo(Task);
+  }
 
   findByProject(projectId: string) {
     return this.dependencyRepo.find({ where: { projectId }, order: { createdAt: 'ASC' } });
@@ -24,8 +28,13 @@ export class DependencyService {
   /**
    * Link two tasks (groups too). If the successor is already too early it is moved, with
    * everything below it and everything that follows it; the client reloads the tasks to see that.
+   * One transaction: if the link can't be applied, nothing of it is saved.
    */
-  async create(dto: DependencyDto) {
+  create(dto: DependencyDto) {
+    return this.tx.run(() => this.createNow(dto));
+  }
+
+  private async createNow(dto: DependencyDto) {
     if (dto.fromTaskId === dto.toTaskId) {
       throw new BadRequestException('A task cannot depend on itself');
     }
@@ -60,31 +69,23 @@ export class DependencyService {
         lagDays: dto.lagDays ?? 0,
       }),
     );
-    try {
-      await this.scheduler.rescheduleFrom(from.projectId, from.id);
-    } catch (error) {
-      // Not saved at all if it could not be applied: the client got an error, so no link may stay.
-      await this.dependencyRepo.delete(dependency.id);
-      throw error;
-    }
+    await this.scheduler.rescheduleFrom(from.projectId, from.id);
     return dependency;
   }
 
-  /** Change the type and/or the lag; the successor is moved if the new rule needs it. */
-  async update(id: string, dto: UpdateDependencyDto) {
-    const dependency = await this.dependencyRepo.findOneByOrFail({ id });
-    const old = { type: dependency.type, lagDays: dependency.lagDays };
-    Object.assign(dependency, dto);
-    await this.scheduler.assertSchedulable(dependency.projectId, dependency);
-    const saved = await this.dependencyRepo.save(dependency);
-    try {
+  /**
+   * Change the type and/or the lag; the successor is moved if the new rule needs it. One
+   * transaction: if the new rule can't be applied, the link stays as it was.
+   */
+  update(id: string, dto: UpdateDependencyDto) {
+    return this.tx.run(async () => {
+      const dependency = await this.dependencyRepo.findOneByOrFail({ id });
+      Object.assign(dependency, dto);
+      await this.scheduler.assertSchedulable(dependency.projectId, dependency);
+      const saved = await this.dependencyRepo.save(dependency);
       await this.scheduler.rescheduleFrom(saved.projectId, saved.fromTaskId);
-    } catch (error) {
-      // Put the link back as it was: the client got an error, so it must not have changed.
-      await this.dependencyRepo.update({ id }, old);
-      throw error;
-    }
-    return saved;
+      return saved;
+    });
   }
 
   async remove(id: string) {

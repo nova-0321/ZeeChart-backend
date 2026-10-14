@@ -15,7 +15,6 @@ import type { Snapshot } from './revision-diff.js';
 import { assertNoConflict, targetOf, versionIn } from './conflicts.js';
 import { loadSnapshot } from './revision-state.js';
 import { RevisionsService } from './revisions.service.js';
-import { RealtimeService } from '../realtime/realtime.service.js';
 import { VersionsService } from './versions.service.js';
 
 /** What a route may add to its revisions (the restore route says what it restored). */
@@ -38,9 +37,11 @@ export interface RevisionRequest extends AuthedRequest {
  * other rows too (a group stretched, a linked task pushed) is in the history as well, with no
  * route having to remember it.
  *
- * Writes to one project run one after another, on every server instance (ProjectWriteLock), so the
- * snapshots of one request never take in another's changes. The history is written before the
- * answer goes out. Failing to write it never fails the change: it is logged.
+ * The whole write is one transaction holding the project's lock (ProjectWriteLock): the conflict
+ * check, the route's changes and their history are saved together or not at all. A change that
+ * can't be recorded is not saved either (the client gets an error), so every change has its
+ * history, its new version and its undo. Writes to one project run one after another, on every
+ * server instance.
  */
 @Injectable()
 export class RevisionInterceptor implements NestInterceptor {
@@ -52,7 +53,6 @@ export class RevisionInterceptor implements NestInterceptor {
     private readonly lock: ProjectWriteLock,
     private readonly revisions: RevisionsService,
     private readonly versions: VersionsService,
-    private readonly realtime: RealtimeService,
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -79,82 +79,39 @@ export class RevisionInterceptor implements NestInterceptor {
     // Checked first, outside the lock: a malformed header is the request's own mistake.
     const seen = versionIn(request);
     const target = seen === undefined ? null : targetOf(options.entity, request);
-    return this.lock.run(projectId, async () => {
-      const before = await this.snapshot(projectId);
+    let after: Snapshot | null = null;
+    const body = await this.lock.run(projectId, async (manager) => {
+      const before = await loadSnapshot(manager, projectId);
       // Made from an older version: refused when someone else changed what it changes (#21).
-      // Inside the lock, so nothing can change in between the check and the write.
-      if (seen !== undefined && target && before) {
-        await assertNoConflict(this.db, before, target, seen, request.userId);
+      if (seen !== undefined && target) {
+        await assertNoConflict(manager, before, target, seen, request.userId);
       }
-      let body: unknown;
-      try {
-        body = await handle();
-      } catch (error) {
-        // Refused part way (a restore whose last step wasn't allowed, a delete whose refit
-        // failed): what it saved before that is still recorded, and the others told to reload.
-        if (before) await this.recordFailed(projectId, before, request);
-        throw error;
-      }
-      if (before) {
-        const after = await this.snapshot(projectId);
-        if (after) {
-          const noted = request.revisionWholeProject
-            ? undefined
-            : (request.revisionTarget ?? text(request.params.id));
-          const versions = await this.revisions
-            .record(projectId, before, after, {
-              userId: request.userId ?? null,
-              target: noted,
-              note: request.revisionNote,
-              placed: request.revisionPlaced,
-              batch: request.revisionBatch,
-            })
-            .catch((error: unknown) => {
-              this.logger.error(`Could not record the history of ${projectId}`, error as Error);
-              return new Map<string, number>();
-            });
-          // The answer carries the versions the change gave (its rows were read before it).
-          withVersions(body, versions);
-          // And now and then a version of the whole project (VersionsService.autoSave).
-          await this.versions
-            .autoSave(projectId, after, request.userId ?? null)
-            .catch((error: unknown) =>
-              this.logger.error(`Could not save a version of ${projectId}`, error as Error),
-            );
-        }
-      }
-      return body;
-    });
-  }
-
-  /** The part of a refused request that was saved: in the history, and told to the others. */
-  private async recordFailed(projectId: string, before: Snapshot, request: RevisionRequest) {
-    try {
-      const after = await this.snapshot(projectId);
-      if (!after) return;
+      const answer: unknown = await handle();
+      after = await loadSnapshot(manager, projectId);
       const versions = await this.revisions.record(projectId, before, after, {
         userId: request.userId ?? null,
-        target: request.revisionWholeProject ? undefined : text(request.params.id),
+        target: request.revisionWholeProject
+          ? undefined
+          : (request.revisionTarget ?? text(request.params.id)),
         note: request.revisionNote,
+        placed: request.revisionPlaced,
+        batch: request.revisionBatch,
       });
-      if (versions.size > 0) {
-        this.realtime.notify({ projectId, entity: 'revision', action: 'resync' });
-      }
-    } catch (error) {
-      this.logger.error(
-        `Could not record what a refused request saved in ${projectId}`,
-        error as Error,
-      );
+      // The answer carries the versions the change gave (its rows were read before it).
+      withVersions(answer, versions);
+      return answer;
+    });
+    // Once it is saved, now and then a version of the whole project (VersionsService.autoSave): a
+    // copy to go back to, so failing to make one only means one fewer, and fails nothing.
+    const saved = after as Snapshot | null;
+    if (saved) {
+      await this.versions
+        .autoSave(projectId, saved, request.userId ?? null)
+        .catch((error: unknown) =>
+          this.logger.error(`Could not save a version of ${projectId}`, error as Error),
+        );
     }
-  }
-
-  private async snapshot(projectId: string): Promise<Snapshot | null> {
-    try {
-      return await loadSnapshot(this.db.manager, projectId);
-    } catch (error) {
-      this.logger.error(`Could not read ${projectId} for its history`, error as Error);
-      return null;
-    }
+    return body;
   }
 }
 

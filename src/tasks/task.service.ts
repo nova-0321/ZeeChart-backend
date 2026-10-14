@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository, type EntityManager } from 'typeorm';
+import { IsNull, type EntityManager } from 'typeorm';
+import { RequestTransaction } from '../database/request-transaction.js';
 import { rejectNulls } from '../common/reject-nulls.js';
 import { Project } from '../projects/entities/project.entity.js';
 import { TaskDto } from './dto/task.dto.js';
@@ -15,10 +15,13 @@ const dayOf = (date: Date | string) =>
 @Injectable()
 export class TaskService {
   constructor(
-    @InjectRepository(Task)
-    private readonly taskRepo: Repository<Task>,
+    private readonly tx: RequestTransaction,
     private readonly scheduler: TaskScheduler,
   ) {}
+
+  private get taskRepo() {
+    return this.tx.repo(Task);
+  }
 
   /** Flat list for a project, ordered; the frontend builds the tree from parentId. */
   findByProject(projectId: string) {

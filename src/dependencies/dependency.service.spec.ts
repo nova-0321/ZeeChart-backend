@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { DependencyService } from './dependency.service.js';
+import { TaskDependency } from './entities/task-dependency.entity.js';
 
 const PROJECT = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
 const A = '0b1f1d6e-3c1a-4e0a-9d8b-5a5f6f7c8d90';
@@ -23,6 +24,7 @@ describe('DependencyService.create', () => {
   };
   const taskRepo = { findOneByOrFail: vi.fn(), findOneBy: vi.fn() };
   const scheduler = { rescheduleFrom: vi.fn(), assertSchedulable: vi.fn() };
+  const tx = { repo: vi.fn(), run: vi.fn() };
   let service: DependencyService;
 
   beforeEach(() => {
@@ -42,7 +44,11 @@ describe('DependencyService.create', () => {
     taskRepo.findOneBy.mockImplementation(({ id }: { id: string }) => Promise.resolve(task(id)));
     scheduler.rescheduleFrom.mockResolvedValue(undefined);
     scheduler.assertSchedulable.mockResolvedValue(undefined);
-    service = new DependencyService(dependencyRepo as never, taskRepo as never, scheduler as never);
+    tx.run.mockImplementation((work: () => unknown) => work());
+    tx.repo.mockImplementation((entity: unknown) =>
+      entity === TaskDependency ? dependencyRepo : taskRepo,
+    );
+    service = new DependencyService(tx as never, scheduler as never);
   });
 
   it('links two tasks of a project, finish to start unless told otherwise', async () => {
@@ -96,10 +102,28 @@ describe('DependencyService.create', () => {
     expect(scheduler.rescheduleFrom).toHaveBeenCalledWith(PROJECT, A);
   });
 
-  it('takes the link back out when it could not be applied, so no link stays after an error', async () => {
-    scheduler.rescheduleFrom.mockRejectedValue(new BadRequestException('no'));
+  it('saves and applies the link in one transaction, so an error after the save leaves no link', async () => {
+    let inTransaction = false;
+    tx.run.mockImplementation(async (work: () => Promise<unknown>) => {
+      inTransaction = true;
+      try {
+        return await work();
+      } finally {
+        inTransaction = false;
+      }
+    });
+    dependencyRepo.save.mockImplementation((value: object) => {
+      expect(inTransaction).toBe(true);
+      return Promise.resolve({ id: 'd1', ...value });
+    });
+    scheduler.rescheduleFrom.mockImplementation(() => {
+      expect(inTransaction).toBe(true);
+      return Promise.reject(new BadRequestException('no'));
+    });
+    // The error reaches the transaction, which takes the saved link back out.
     await expect(service.create({ fromTaskId: A, toTaskId: B })).rejects.toThrow('no');
-    expect(dependencyRepo.delete).toHaveBeenCalledWith('d1');
+    expect(dependencyRepo.save).toHaveBeenCalledTimes(1);
+    expect(dependencyRepo.delete).not.toHaveBeenCalled();
   });
 
   it('rejects a link that already exists', async () => {

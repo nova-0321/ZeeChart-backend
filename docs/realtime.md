@@ -151,8 +151,9 @@ that leaves the room disappears from the presence list: clients drop its cursor 
   push linked tasks. It is still one message, about the row the request was about. Reload the whole
   list (tasks and links together), not that one row.
 - **Refused requests (4xx) send nothing.** They saved nothing.
-- **Failures (5xx) send `resync`.** A request that failed part-way may have saved some of its work,
-  so reload the project.
+- **Failures (5xx) send `resync`.** A write to a project's tasks, links, events or settings is one
+  transaction and saves nothing when it fails; other writes (members) may have saved part of their
+  work. Either way, reload the project.
 - **Never sent to the tab that made the change**, if it sent `X-Client-Id`.
 - **Sending never fails or slows a request.** Messages go out after the answer.
 

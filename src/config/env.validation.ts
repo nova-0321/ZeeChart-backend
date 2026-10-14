@@ -30,6 +30,9 @@ export const envValidationSchema = Joi.object({
   DB_PASSWORD: Joi.string().required(),
   DB_NAME: Joi.string().required(),
   DB_LOGGING: Joi.boolean().default(false),
+  // Connections each server instance may open to the database (node-postgres' own default is
+  // 10). Mind the database plan's limit: two instances run side by side during a deploy.
+  DB_POOL_SIZE: Joi.number().integer().min(1).max(100).default(10),
   // SSL to the database: false (local), true (a managed host: Neon, Railway…; the certificate is
   // checked), or no-verify (encrypted, certificate not checked: a host whose certificate isn't
   // publicly trusted, e.g. Supabase's pooler).

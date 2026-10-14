@@ -306,9 +306,9 @@ describe('Cross-instance project write lock (e2e)', () => {
     expect(revisions.map((r) => r.version).sort()).toEqual([2, 3]);
   });
 
-  // Each request waiting for a project lock holds a connection while it waits. On the app's own
-  // pool (10 connections) a burst like these filled it, and the request holding the lock then never
-  // got a connection for its own queries: every write hung for good. One instance is enough.
+  // More writes at once than the pool has connections (10). A write waiting for the lock holds a
+  // connection, so the one holding it must need no other: one that did hung every write for good
+  // (the first version of the lock). One instance is enough.
   const BURST = 15;
   /** The status of each call, or null when they don't all finish within `ms`. */
   const statusesWithin = (calls: request.Test[], ms: number) =>
@@ -347,8 +347,8 @@ describe('Cross-instance project write lock (e2e)', () => {
   it('writes queued behind a locked project leave other projects on the same instance free', async () => {
     const [p, q] = await Promise.all([setUp(), setUp()]);
     const holder = await holdLock(p.projectId);
-    // More than the lock's own pool holds (10): without the in-memory queue in front, these would
-    // take every lock connection while they wait, and q's write would wait with them.
+    // More than the pool holds (10): without the in-memory queue in front, these would each take a
+    // connection while they wait, and q's write would wait for one.
     const queued = Array.from({ length: 12 }, (_, i) =>
       send(p.apiA.patch(`/tasks/${p.x.id}`, { progress: i })),
     );

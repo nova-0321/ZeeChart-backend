@@ -1,9 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
-import { Member } from '../members/entities/member.entity.js';
+import { RequestTransaction } from '../database/request-transaction.js';
 import { Project } from './entities/project.entity.js';
 import { ProjectsService } from './projects.service.js';
 
@@ -19,9 +17,10 @@ describe('ProjectsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProjectsService,
-        { provide: getRepositoryToken(Project), useValue: projectRepo },
-        { provide: getRepositoryToken(Member), useValue: memberRepo },
-        { provide: DataSource, useValue: {} },
+        {
+          provide: RequestTransaction,
+          useValue: { repo: (entity: unknown) => (entity === Project ? projectRepo : memberRepo) },
+        },
       ],
     }).compile();
 

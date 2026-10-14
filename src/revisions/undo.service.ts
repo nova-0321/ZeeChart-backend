@@ -4,8 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, type EntityManager, Repository } from 'typeorm';
+import type { EntityManager } from 'typeorm';
+import { RequestTransaction } from '../database/request-transaction.js';
 import { roleIn } from '../projects/project-access.js';
 import { TaskScheduler } from '../scheduling/task-scheduler.service.js';
 import type { UndoStepDto as UndoStep } from './dto/undo.dto.js';
@@ -44,11 +44,13 @@ const STACK_DEPTH = 200;
 @Injectable()
 export class UndoService {
   constructor(
-    @InjectRepository(Revision)
-    private readonly revisionRepo: Repository<Revision>,
-    private readonly db: DataSource,
+    private readonly tx: RequestTransaction,
     private readonly scheduler: TaskScheduler,
   ) {}
+
+  private get revisionRepo() {
+    return this.tx.repo(Revision);
+  }
 
   async state(
     projectId: string,
@@ -76,7 +78,7 @@ export class UndoService {
   }
 
   private async stacks(projectId: string, userId: string) {
-    const batches = await this.db.query<
+    const batches = await this.tx.manager.query<
       { batchId: string; batchKind: BatchKind; ofBatch: string | null; creation: boolean }[]
     >(
       `SELECT "batchId", "batchKind", "ofBatch", "creation" FROM (
@@ -129,7 +131,7 @@ export class UndoService {
     if (revisions.length === 0) throw new NotFoundException('Not found');
     if (
       revisions.some((revision) => revision.entityType === 'project') &&
-      (await roleIn(this.db, projectId, userId)) !== 'owner'
+      (await roleIn(this.tx.manager, projectId, userId)) !== 'owner'
     ) {
       throw new ForbiddenException('Only an owner of this project can do this');
     }
@@ -140,7 +142,7 @@ export class UndoService {
       wanted: (direction === 'undo' ? revision.before : revision.after) as Row | null,
     }));
 
-    const now = await loadSnapshot(this.db.manager, projectId);
+    const now = await loadSnapshot(this.tx.manager, projectId);
     const changed = steps.find(
       ({ revision, expected }) => !matches(revision.entityType, expected, currentOf(now, revision)),
     );
@@ -184,7 +186,7 @@ export class UndoService {
     }
 
     const placed: string[] = [];
-    await this.db.transaction(async (manager) => {
+    await this.tx.manager.transaction(async (manager) => {
       for (const { revision, wanted } of steps) {
         if (revision.entityType === 'project' && wanted) {
           const project = wanted as ProjectState;

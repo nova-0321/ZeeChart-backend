@@ -4,9 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
-import { DataSource, Repository } from 'typeorm';
+import { RequestTransaction } from '../database/request-transaction.js';
 import { DependencyService } from '../dependencies/dependency.service.js';
 import { ProjectEvent } from '../events/entities/project-event.entity.js';
 import { EventsService } from '../events/events.service.js';
@@ -59,19 +58,25 @@ export interface RecordOptions {
 @Injectable()
 export class RevisionsService {
   constructor(
-    @InjectRepository(Revision)
-    private readonly revisionRepo: Repository<Revision>,
-    @InjectRepository(Task)
-    private readonly taskRepo: Repository<Task>,
-    @InjectRepository(ProjectEvent)
-    private readonly eventRepo: Repository<ProjectEvent>,
-    private readonly db: DataSource,
+    private readonly tx: RequestTransaction,
     private readonly tasks: TaskService,
     private readonly events: EventsService,
     private readonly projects: ProjectsService,
     private readonly links: DependencyService,
     private readonly scheduler: TaskScheduler,
   ) {}
+
+  private get revisionRepo() {
+    return this.tx.repo(Revision);
+  }
+
+  private get taskRepo() {
+    return this.tx.repo(Task);
+  }
+
+  private get eventRepo() {
+    return this.tx.repo(ProjectEvent);
+  }
 
   /**
    * Saves one revision per row that differs between the snapshots, numbered on from each entity's
@@ -91,7 +96,7 @@ export class RevisionsService {
     const drafts = diffSnapshots(before, after, options.target, options.placed);
     if (drafts.length === 0) return versions;
     const batchId = randomUUID();
-    await this.db.transaction(async (manager) => {
+    await this.tx.manager.transaction(async (manager) => {
       await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`revisions:${projectId}`]);
       const last = await manager.query<{ entityId: string; version: number }[]>(
         `SELECT "entityId", MAX("version")::int AS "version" FROM "revisions"
@@ -164,9 +169,13 @@ export class RevisionsService {
   /**
    * Puts an entity back the way it was right after the revision (for a deletion: right before it,
    * so it comes back). A project's own revisions are its owners' to restore. 400 when the state
-   * can't be put back as it stands now (see the messages).
+   * can't be put back as it stands now (see the messages); then nothing of it is put back.
    */
-  async restore(id: string, userId: string): Promise<RestoreResult> {
+  restore(id: string, userId: string): Promise<RestoreResult> {
+    return this.tx.run(() => this.restoreNow(id, userId));
+  }
+
+  private async restoreNow(id: string, userId: string): Promise<RestoreResult> {
     const revision = await this.revisionRepo.findOneBy({ id });
     if (!revision) throw new NotFoundException('Not found');
     const state = stateOf(revision);
@@ -188,7 +197,7 @@ export class RevisionsService {
         // A link comes back with its task (restoring a deleted task), with undo, or with a version.
         throw new BadRequestException('A link is restored with its task, or with undo');
       case 'project': {
-        if ((await roleIn(this.db, revision.projectId, userId)) !== 'owner') {
+        if ((await roleIn(this.tx.manager, revision.projectId, userId)) !== 'owner') {
           throw new ForbiddenException('Only an owner of this project can do this');
         }
         const project = state as ProjectState;
@@ -260,41 +269,22 @@ export class RevisionsService {
         );
       }
     }
-    // Its group first: the step most likely to be refused (a link may not allow it there), before
-    // anything else is changed. If a later step is refused, the group (and the type, with the
-    // dates it had) is put back, so a refused restore leaves the task as it was.
-    const movedFrom = current.parentId !== parentId ? current.parentId : undefined;
-    if (movedFrom !== undefined) await this.tasks.setParent(current.id, parentId);
-    const typeChanged = current.type !== state.type;
-    try {
-      if (typeChanged) await this.tasks.changeType(current.id, state.type as Task['type']);
-      await this.tasks.update(current.id, {
-        name: state.name,
-        // null clears it (it had none then).
-        description: state.description as string | undefined,
-        priority: state.priority as 'medium',
-        progress: state.progress,
-        color: state.color,
-        startDate: state.startDate as unknown as Date,
-        endDate: state.endDate as unknown as Date,
-      });
-    } catch (error) {
-      if (typeChanged) {
-        await this.tasks
-          .changeType(current.id, current.type)
-          .then(() =>
-            this.tasks.update(current.id, {
-              startDate: current.startDate,
-              endDate: current.endDate,
-            }),
-          )
-          .catch(() => undefined);
-      }
-      if (movedFrom !== undefined) {
-        await this.tasks.setParent(current.id, movedFrom).catch(() => undefined);
-      }
-      throw error;
+    // A refused step (a link may not allow it in its group) undoes the whole restore: it is one
+    // transaction, so the task stays as it was.
+    if (current.parentId !== parentId) await this.tasks.setParent(current.id, parentId);
+    if (current.type !== state.type) {
+      await this.tasks.changeType(current.id, state.type as Task['type']);
     }
+    await this.tasks.update(current.id, {
+      name: state.name,
+      // null clears it (it had none then).
+      description: state.description as string | undefined,
+      priority: state.priority as 'medium',
+      progress: state.progress,
+      color: state.color,
+      startDate: state.startDate as unknown as Date,
+      endDate: state.endDate as unknown as Date,
+    });
   }
 
   private async restoreEvent(projectId: string, state: EventState) {

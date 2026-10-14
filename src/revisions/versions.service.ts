@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, type EntityManager, Repository } from 'typeorm';
+import type { EntityManager } from 'typeorm';
+import { RequestTransaction } from '../database/request-transaction.js';
 import type { MyProjectDto } from '../projects/dto/my-project.dto.js';
 import { roleIn } from '../projects/project-access.js';
 import { assertNameFree, ProjectsService } from '../projects/projects.service.js';
@@ -26,11 +26,13 @@ export const KEEP_RECENT = 30;
 @Injectable()
 export class VersionsService {
   constructor(
-    @InjectRepository(ProjectVersion)
-    private readonly versionRepo: Repository<ProjectVersion>,
-    private readonly db: DataSource,
+    private readonly tx: RequestTransaction,
     private readonly projects: ProjectsService,
   ) {}
+
+  private get versionRepo() {
+    return this.tx.repo(ProjectVersion);
+  }
 
   /** The project's versions, newest first, without their contents (but how much is in each). */
   async list(projectId: string): Promise<VersionSummaryDto[]> {
@@ -91,7 +93,7 @@ export class VersionsService {
 
   /** "Save a version now": the project as it is, even if no version differs from it yet. */
   async saveNow(projectId: string, userId: string): Promise<VersionDto> {
-    const snapshot = await loadSnapshot(this.db.manager, projectId);
+    const snapshot = await loadSnapshot(this.tx.manager, projectId);
     if (!snapshot.project) throw new NotFoundException('Not found');
     const version = await this.save(
       projectId,
@@ -110,7 +112,7 @@ export class VersionsService {
   async autoSave(projectId: string, after: Snapshot, userId: string | null): Promise<void> {
     if (!after.project) return;
     // Its number, age and size first: the whole content is read only when a version is due.
-    const [head] = await this.db.query<{ number: number; due: boolean; tasks: number }[]>(
+    const [head] = await this.tx.manager.query<{ number: number; due: boolean; tasks: number }[]>(
       `SELECT "number", now() - "createdAt" >= make_interval(secs => $2) AS "due",
               jsonb_array_length("content"->'tasks')::int AS "tasks"
          FROM "project_versions" WHERE "projectId" = $1 ORDER BY "number" DESC LIMIT 1`,
@@ -137,12 +139,19 @@ export class VersionsService {
    * it), so this can be undone; then the versions newer than the restored one go, except starred
    * and manually saved ones (and that one).
    */
-  async restore(id: string, userId: string): Promise<{ version: number; savedAs: number | null }> {
+  restore(id: string, userId: string): Promise<{ version: number; savedAs: number | null }> {
+    return this.tx.run(() => this.restoreNow(id, userId));
+  }
+
+  private async restoreNow(
+    id: string,
+    userId: string,
+  ): Promise<{ version: number; savedAs: number | null }> {
     const version = await this.versionRepo.findOneBy({ id });
     if (!version) throw new NotFoundException('Not found');
     const { projectId, content } = version;
 
-    const now = await loadSnapshot(this.db.manager, projectId);
+    const now = await loadSnapshot(this.tx.manager, projectId);
     if (!now.project) throw new NotFoundException('Not found');
     const current = contentOf({ ...now, project: now.project });
     const latest = await this.versionRepo.findOne({
@@ -154,8 +163,8 @@ export class VersionsService {
         ? latest
         : await this.save(projectId, 'before-restore', current, userId);
 
-    const owner = (await roleIn(this.db, projectId, userId)) === 'owner';
-    await this.db.transaction(async (manager) => {
+    const owner = (await roleIn(this.tx.manager, projectId, userId)) === 'owner';
+    await this.tx.manager.transaction(async (manager) => {
       await this.apply(manager, projectId, content, owner);
       await manager.query(
         `DELETE FROM "project_versions"
@@ -170,9 +179,14 @@ export class VersionsService {
   /**
    * A new project of yours, made from the version: its tasks, events and links (new ids), named
    * "<name> (v3)" (or "<name> (v3) 2"... when you have one by that name). The version's project is
-   * not touched. Its own history starts with this content as v1.
+   * not touched. Its own history starts with this content as v1. One transaction: if filling it
+   * fails, no project is left.
    */
-  async copy(id: string, userId: string): Promise<MyProjectDto> {
+  copy(id: string, userId: string): Promise<MyProjectDto> {
+    return this.tx.run(() => this.copyNow(id, userId));
+  }
+
+  private async copyNow(id: string, userId: string): Promise<MyProjectDto> {
     const version = await this.versionRepo.findOneBy({ id });
     if (!version) throw new NotFoundException('Not found');
     const { content } = version;
@@ -185,20 +199,14 @@ export class VersionsService {
       userId,
     );
     const ids = new Map(content.tasks.map((task) => [task.id, randomUUID()]));
-    // The project exists from here; if filling it fails, it goes again (no empty copy is left).
-    try {
-      await this.fill(project.id, content, ids);
-    } catch (error) {
-      await this.db.query(`DELETE FROM "projects" WHERE "id" = $1`, [project.id]);
-      throw error;
-    }
+    await this.fill(project.id, content, ids);
     return project;
   }
 
   /** Copies a version's tasks, events and links into a new project (see `copy`), with new ids. */
   private async fill(projectId: string, content: VersionContent, ids: Map<string, string>) {
     const project = { id: projectId };
-    await this.db.transaction(async (manager) => {
+    await this.tx.manager.transaction(async (manager) => {
       for (const task of content.tasks) {
         await writeTask(manager, project.id, { ...task, id: ids.get(task.id)! });
       }
@@ -234,7 +242,7 @@ export class VersionsService {
 
   /** `base`, or `base 2`, `base 3`...: the first that none of the projects you own is called. */
   private async freeName(userId: string, base: string) {
-    const rows = await this.db.query<{ name: string }[]>(
+    const rows = await this.tx.manager.query<{ name: string }[]>(
       `SELECT p."name" FROM "projects" p JOIN "members" m ON m."projectId" = p."id"
         WHERE m."userId" = $1 AND m."role" = 'owner' AND (p."name" = $2 OR p."name" LIKE $3)`,
       [userId, base, `${base} %`],
@@ -304,7 +312,7 @@ export class VersionsService {
     content: VersionContent,
     userId: string | null,
   ) {
-    return this.db.transaction(async (manager) => {
+    return this.tx.manager.transaction(async (manager) => {
       await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`versions:${projectId}`]);
       const [{ last }] = await manager.query<{ last: number | null }[]>(
         `SELECT MAX("number")::int AS "last" FROM "project_versions" WHERE "projectId" = $1`,

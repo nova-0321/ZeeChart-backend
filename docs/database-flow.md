@@ -14,11 +14,15 @@ the `DB_*` values from `ConfigService` and opens one shared `DataSource`
 entity with `forFeature`, which Nest injects into the service, and the service
 into the controller.
 
-`DatabaseModule` also provides `ProjectWriteLock`, which has a second, small
-pool of its own. It only ever holds the per-project write lock that
-`RevisionInterceptor` takes around every write, and never runs the app's
-queries: a lock held on a connection of the shared pool would leave the write
-holding it waiting forever for another one when a burst fills the pool.
+`DatabaseModule` also provides `RequestTransaction`. A write to a project
+(`RevisionInterceptor`) is one transaction, on one connection: the project's
+write lock (`ProjectWriteLock`), its changes and their history, saved together
+or not at all. Services take their repositories from `RequestTransaction`
+(`tx.repo(Entity)`), which hands out the write's transaction inside a write and
+the shared `DataSource` elsewhere. Inside a write nothing may use the
+`DataSource` directly: its query would run on a second connection, outside the
+transaction, while the write holds the first (`test/one-connection.e2e-spec.ts`
+runs every write with a pool of one connection to catch that).
 
 ```mermaid
 flowchart TB
@@ -89,7 +93,7 @@ sequenceDiagram
 | Service    | Business rules: lookups, checks, throwing `NotFoundException`, combining repositories. | Know about HTTP requests or responses. | `charts.service.ts`   |
 | Repository | Typed queries for one entity, provided by TypeORM.                   | Be written by hand for simple CRUD.                 | injected, no file     |
 | Entity     | Maps a class to a table and its columns.                             | Change the schema without a migration (`synchronize` is off). | `chart.entity.ts` |
-| DataSource | One shared connection pool for the whole app (plus `ProjectWriteLock`'s own small pool, only for the per-project write lock). | Be created per feature.                             | `database.module.ts`  |
+| DataSource | One shared connection pool for the whole app (size: `DB_POOL_SIZE`). Inside a write, use `RequestTransaction` instead. | Be created per feature.                             | `database.module.ts`  |
 
 ## The example feature in code
 

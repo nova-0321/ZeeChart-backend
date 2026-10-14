@@ -121,7 +121,7 @@ export class MembersService {
       // Someone else's place: an owner's to take away. Your own: yours to leave.
       if (
         found.userId !== byUserId &&
-        (await roleIn(this.db, found.projectId, byUserId)) !== 'owner'
+        (await roleIn(manager, found.projectId, byUserId)) !== 'owner'
       ) {
         throw new ForbiddenException('Only an owner of this project can do this');
       }

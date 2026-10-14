@@ -19,6 +19,7 @@ export const buildDataSourceOptions = (get: Getter): DataSourceOptions => ({
   migrations: [__dirname + '/migrations/*.{ts,js}'],
   synchronize: false,
   logging: get('DB_LOGGING') === 'true',
+  poolSize: Number(get('DB_POOL_SIZE') ?? 10),
   ssl: sslOf(get('DB_SSL')),
 });
 
