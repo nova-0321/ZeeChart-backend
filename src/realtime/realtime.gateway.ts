@@ -13,7 +13,7 @@ import {
 import { isUUID } from 'class-validator';
 import type { Server, Socket } from 'socket.io';
 import { DataSource } from 'typeorm';
-import type { TokenPayload } from '../auth/auth.service.js';
+import { isCurrentToken, SessionEvents, type TokenPayload } from '../auth/token.js';
 import { User } from '../auth/entities/user.entity.js';
 import { roleIn } from '../projects/project-access.js';
 import {
@@ -128,6 +128,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   constructor(
     private readonly jwt: JwtService,
     private readonly db: DataSource,
+    private readonly sessions: SessionEvents,
   ) {}
 
   /**
@@ -135,6 +136,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
    * REST API gives (401).
    */
   afterInit(server: Server) {
+    // Signed out everywhere: the account's open connections close (a token is only checked when a
+    // connection opens, so they would otherwise stay until it expires).
+    this.sessions.onRevoked((userId) => {
+      server.in(userRoom(userId)).disconnectSockets(true);
+    });
     server.use((socket, next) => {
       this.signIn(socket).then(
         () => next(),
@@ -293,21 +299,23 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   private async signIn(socket: Socket) {
     const token = (socket.handshake.auth as { token?: unknown } | undefined)?.token;
     if (typeof token !== 'string' || !token) throw new Error('Sign in first');
-    let userId: string;
+    let payload: TokenPayload & { exp?: number };
     try {
-      const payload = await this.jwt.verifyAsync<TokenPayload & { exp?: number }>(token);
-      userId = payload.sub;
+      payload = await this.jwt.verifyAsync<TokenPayload & { exp?: number }>(token);
       if (payload.exp) dataOf(socket).expiresAt = payload.exp * 1000;
     } catch {
       // Expired, tampered with, or signed with another secret.
       throw new Error('Your session has ended. Sign in again');
     }
-    // The name others see in the presence list. A deleted account is refused, as by the API.
+    // The name others see in the presence list. A deleted account is refused, as by the API, and so
+    // is a token made before the account signed out everywhere.
     const user = await this.db
       .getRepository(User)
-      .findOne({ select: { name: true }, where: { id: userId } });
-    if (!user) throw new Error('Your session has ended. Sign in again');
-    dataOf(socket).userId = userId;
+      .findOne({ select: { name: true, tokenVersion: true }, where: { id: payload.sub } });
+    if (!user || !isCurrentToken(payload, user.tokenVersion)) {
+      throw new Error('Your session has ended. Sign in again');
+    }
+    dataOf(socket).userId = payload.sub;
     dataOf(socket).name = user.name;
   }
 

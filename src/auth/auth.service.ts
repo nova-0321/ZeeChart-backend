@@ -7,11 +7,7 @@ import type { SignInDto } from './dto/sign-in.dto.js';
 import type { SignUpDto } from './dto/sign-up.dto.js';
 import { User } from './entities/user.entity.js';
 import { dummyPasswordHash, hashPassword, needsRehash, verifyPassword } from './password.js';
-
-/** What a token carries: the user's id in `sub`. */
-export interface TokenPayload {
-  sub: string;
-}
+import { SessionEvents, type TokenPayload } from './token.js';
 
 const EMAIL_TAKEN = 'An account with this email already exists';
 // One message for a wrong email and a wrong password: the answer does not tell which emails
@@ -29,6 +25,7 @@ export class AuthService {
     @InjectRepository(User)
     private readonly users: Repository<User>,
     private readonly jwt: JwtService,
+    private readonly sessions: SessionEvents,
   ) {}
 
   async signUp(dto: SignUpDto): Promise<AuthResponseDto> {
@@ -51,7 +48,14 @@ export class AuthService {
   async signIn(dto: SignInDto): Promise<AuthResponseDto> {
     const user = await this.users.findOne({
       where: { email: dto.email },
-      select: { id: true, name: true, email: true, createdAt: true, passwordHash: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        createdAt: true,
+        passwordHash: true,
+        tokenVersion: true,
+      },
     });
     // An unknown email still costs one hash check (see dummyPasswordHash).
     const ok = await verifyPassword(
@@ -87,8 +91,19 @@ export class AuthService {
     return toAuthUser(user);
   }
 
+  /**
+   * Ends every sign-in of this account, this one too: tokens made so far stop working (their
+   * `tokenVersion` is no longer the account's), and its open live connections are closed. The one
+   * place to call when a password changes, too. Atomic: two at once raise it twice, never lose one.
+   */
+  async signOutEverywhere(userId: string): Promise<void> {
+    await this.users.increment({ id: userId }, 'tokenVersion', 1);
+    this.sessions.revoked(userId);
+  }
+
   private async issue(user: User): Promise<AuthResponseDto> {
-    const payload: TokenPayload = { sub: user.id };
+    // The account's current number goes into the token (a new account's is the default, 0).
+    const payload: TokenPayload = { sub: user.id, tv: user.tokenVersion ?? 0 };
     return { accessToken: await this.jwt.signAsync(payload), user: toAuthUser(user) };
   }
 }

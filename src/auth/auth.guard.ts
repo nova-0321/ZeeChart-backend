@@ -7,7 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
-import type { TokenPayload } from './auth.service.js';
+import { isCurrentToken, type TokenPayload } from './token.js';
 
 /** A request that passed AuthGuard: the signed-in user's id. */
 export interface AuthedRequest extends Request {
@@ -16,8 +16,9 @@ export interface AuthedRequest extends Request {
 
 /**
  * Lets a request through only with a valid `Authorization: Bearer <token>` of an account that still
- * exists; 401 otherwise (a deleted account's token is an ended session, not a 409 from a missing
- * row later on). Exported for other modules (permissions, #20).
+ * exists and has not signed out everywhere since the token was made (see token.ts); 401 otherwise
+ * (a deleted account's token is an ended session, not a 409 from a missing row later on). Exported
+ * for other modules (permissions, #20).
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -30,20 +31,26 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthedRequest>();
     const [scheme, token] = request.headers.authorization?.split(' ') ?? [];
     if (scheme !== 'Bearer' || !token) throw new UnauthorizedException('Sign in first');
-    let userId: string;
+    let payload: TokenPayload;
     try {
-      userId = (await this.jwt.verifyAsync<TokenPayload>(token)).sub;
+      payload = await this.jwt.verifyAsync<TokenPayload>(token);
     } catch {
       // Expired, tampered with, or signed with another secret.
       throw new UnauthorizedException('Your session has ended. Sign in again');
     }
-    const exists = await this.db.query<unknown[]>('SELECT 1 FROM "users" WHERE "id" = $1', [
-      userId,
-    ]);
-    if (exists.length === 0) {
+    const rows = await this.db.query<{ tokenVersion: number }[]>(
+      'SELECT "tokenVersion" FROM "users" WHERE "id" = $1',
+      [payload.sub],
+    );
+    const account = rows[0];
+    if (!account) {
       throw new UnauthorizedException('The account no longer exists. Sign in again');
     }
-    request.userId = userId;
+    // Signed out everywhere since: said as for an expired token (nothing to tell about the account).
+    if (!isCurrentToken(payload, account.tokenVersion)) {
+      throw new UnauthorizedException('Your session has ended. Sign in again');
+    }
+    request.userId = payload.sub;
     return true;
   }
 }

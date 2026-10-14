@@ -27,6 +27,13 @@ export class User {
   @Column({ type: 'varchar', length: 255, select: false })
   passwordHash: string;
 
+  /**
+   * Raised to end every sign-in of this account at once (sign out everywhere): a token carries the
+   * number it was made with and works only while it is still the account's (see token.ts).
+   */
+  @Column({ type: 'integer', default: 0 })
+  tokenVersion: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -46,6 +46,8 @@ describe('Auth (e2e)', () => {
     const body = signedUp.body as { accessToken: string; user: Record<string, unknown> };
     expect(body.user).toMatchObject({ name: 'Ada', email: address });
     expect(body.user).not.toHaveProperty('passwordHash');
+    // Internal: it goes into the token, never to the client as a field.
+    expect(body.user).not.toHaveProperty('tokenVersion');
     expect(typeof body.accessToken).toBe('string');
 
     const me = await http()
@@ -59,6 +61,7 @@ describe('Auth (e2e)', () => {
       .send({ email: address, password: 'pass-word-1' })
       .expect(200);
     expect((signedIn.body as { user: { id: string } }).user.id).toBe(body.user.id);
+    expect((signedIn.body as { user: object }).user).not.toHaveProperty('tokenVersion');
   });
 
   it('stores a hash, never the password', async () => {
