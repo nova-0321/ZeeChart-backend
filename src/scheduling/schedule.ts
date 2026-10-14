@@ -204,7 +204,17 @@ class Network {
   /** The task and everything below it. */
   block(id: string): string[] {
     const ids = [id];
-    for (let i = 0; i < ids.length; i++) ids.push(...(this.children.get(ids[i]!) ?? []));
+    // Each task once: groups that loop into each other (old data) would otherwise grow this
+    // forever, and with it hold up the whole server, not only this project.
+    const seen = new Set(ids);
+    for (let i = 0; i < ids.length; i++) {
+      for (const child of this.children.get(ids[i]!) ?? []) {
+        if (!seen.has(child)) {
+          seen.add(child);
+          ids.push(child);
+        }
+      }
+    }
     return ids;
   }
 

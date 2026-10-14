@@ -131,6 +131,18 @@ describe('DependencyService.create', () => {
     await expect(service.create({ fromTaskId: A, toTaskId: B })).rejects.toThrow('already linked');
   });
 
+  it('refuses a link whose group chain comes back to itself, instead of walking it forever', async () => {
+    // B is inside g, g inside h, h inside g: the walk up from B never meets A.
+    const parents: Record<string, string> = { [B]: 'g', g: 'h', h: 'g' };
+    taskRepo.findOneBy.mockImplementation(({ id }: { id: string }) =>
+      Promise.resolve(task(id, { parentId: parents[id] ?? null })),
+    );
+    await expect(service.create({ fromTaskId: A, toTaskId: B })).rejects.toThrow(
+      /groups loop into each other/,
+    );
+    expect(dependencyRepo.save).not.toHaveBeenCalled();
+  });
+
   it('rejects a link that closes a loop (B already leads back to A)', async () => {
     query.getRawMany.mockResolvedValue([{ id: A }]);
     await expect(service.create({ fromTaskId: A, toTaskId: B })).rejects.toThrow(
