@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { EntityManager } from 'typeorm';
 import { RequestTransaction } from '../../database/request-transaction.js';
@@ -23,6 +23,7 @@ import {
   setTaskParent,
   writeTask,
 } from '../../tasks/task-rows.js';
+import { notFound } from '../../common/not-found.js';
 
 /** An auto version is saved after a change when the newest version is older than this. */
 export const AUTO_EVERY_MS = 10 * 60 * 1000;
@@ -106,14 +107,14 @@ export class VersionsService {
       where: { id },
       relations: { createdBy: true },
     });
-    if (!version) throw new NotFoundException('Not found');
+    if (!version) throw notFound('Version');
     return asVersionDto(version);
   }
 
   /** Stars or unstars it. A star keeps a version for good, so only MAX_STARRED_VERSIONS at once. */
   async star(id: string, starred: boolean): Promise<VersionDto> {
     const version = await this.versionRepo.findOneBy({ id });
-    if (!version) throw new NotFoundException('Not found');
+    if (!version) throw notFound('Version');
     if (starred && !version.starred) {
       const count = await this.versionRepo.countBy({ projectId: version.projectId, starred: true });
       if (count >= MAX_STARRED_VERSIONS) {
@@ -136,7 +137,7 @@ export class VersionsService {
     userId: string,
   ): Promise<{ version: VersionDto; created: boolean }> {
     const snapshot = await loadSnapshot(this.tx.manager, projectId);
-    if (!snapshot.project) throw new NotFoundException('Not found');
+    if (!snapshot.project) throw notFound('Project');
     const content = contentOf({ ...snapshot, project: snapshot.project });
     const latest = await this.versionRepo.findOne({
       where: { projectId },
@@ -198,11 +199,11 @@ export class VersionsService {
     userId: string,
   ): Promise<{ version: number; savedAs: number | null }> {
     const version = await this.versionRepo.findOneBy({ id });
-    if (!version) throw new NotFoundException('Not found');
+    if (!version) throw notFound('Version');
     const { projectId, content } = version;
 
     const now = await loadSnapshot(this.tx.manager, projectId);
-    if (!now.project) throw new NotFoundException('Not found');
+    if (!now.project) throw notFound('Project');
     const current = contentOf({ ...now, project: now.project });
     const latest = await this.versionRepo.findOne({
       where: { projectId },
@@ -238,7 +239,7 @@ export class VersionsService {
 
   private async copyNow(id: string, userId: string): Promise<MyProjectDto> {
     const version = await this.versionRepo.findOneBy({ id });
-    if (!version) throw new NotFoundException('Not found');
+    if (!version) throw notFound('Version');
     const { content } = version;
     // Within the 255 characters a name may have, " (v12) 99" included.
     const suffix = ` (v${version.number})`;

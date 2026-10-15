@@ -1,17 +1,17 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { RequestTransaction } from '../database/request-transaction.js';
-import type { DependencyDto } from './dto/dependency.dto.js';
+import type { CreateDependencyDto } from './dto/create-dependency.dto.js';
 import type { UpdateDependencyDto } from './dto/update-dependency.dto.js';
 import { TaskDependency } from './entities/task-dependency.entity.js';
-import { TaskService } from '../tasks/task.service.js';
+import { TasksService } from '../tasks/tasks.service.js';
 import { TaskScheduler } from '../tasks/scheduling/task-scheduler.service.js';
 
 @Injectable()
-export class DependencyService {
+export class DependenciesService {
   constructor(
     private readonly tx: RequestTransaction,
     private readonly scheduler: TaskScheduler,
-    private readonly tasks: TaskService,
+    private readonly tasks: TasksService,
   ) {}
 
   private get dependencyRepo() {
@@ -27,11 +27,11 @@ export class DependencyService {
    * everything below it and everything that follows it; the client reloads the tasks to see that.
    * One transaction: if the link can't be applied, nothing of it is saved.
    */
-  create(dto: DependencyDto) {
+  create(dto: CreateDependencyDto) {
     return this.tx.run(() => this.createNow(dto));
   }
 
-  private async createNow(dto: DependencyDto) {
+  private async createNow(dto: CreateDependencyDto) {
     if (dto.fromTaskId === dto.toTaskId) {
       throw new BadRequestException('A task cannot depend on itself');
     }

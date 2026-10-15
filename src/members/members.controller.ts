@@ -22,8 +22,8 @@ import {
   projectOfRow,
 } from '../projects/project-access.js';
 import { Broadcast, NoBroadcast } from '../realtime/broadcast.decorator.js';
-import { AddMemberDto } from './dto/add-member.dto.js';
-import { ChangeRoleDto } from './dto/change-role.dto.js';
+import { CreateInvitationDto } from './dto/create-invitation.dto.js';
+import { UpdateMemberDto } from './dto/update-member.dto.js';
 import {
   AcceptInviteDto,
   AcceptedInviteDto,
@@ -68,7 +68,7 @@ export class MembersController {
   @Patch(':id')
   @ProjectAccess('owner', projectOfRow(Member))
   @Broadcast({ entity: 'member', action: 'update', project: projectOfRow(Member) })
-  changeRole(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ChangeRoleDto) {
+  changeRole(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateMemberDto) {
     return this.members.changeRole(id, dto.role);
   }
 
@@ -114,7 +114,7 @@ export class ProjectInvitationsController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   invite(
     @Param('id', ParseUUIDPipe) projectId: string,
-    @Body() dto: AddMemberDto,
+    @Body() dto: CreateInvitationDto,
     @CurrentUser() userId: string,
   ): Promise<InviteResultDto> {
     return this.members.invite(projectId, dto, userId);

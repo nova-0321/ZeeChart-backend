@@ -5,7 +5,7 @@ import { DatabaseModule } from '../../database/database.module.js';
 import { DependenciesModule } from '../../dependencies/dependencies.module.js';
 import { EventsModule } from '../../events/events.module.js';
 import { ProjectsModule } from '../../projects/projects.module.js';
-import { TaskModule } from '../../tasks/task.module.js';
+import { TasksModule } from '../../tasks/tasks.module.js';
 import { Revision } from '../entities/revision.entity.js';
 import { RestoreService } from './restore.service.js';
 import { ProjectRevisionsController, RevisionsController } from './revisions.controller.js';
@@ -20,7 +20,7 @@ import { RevisionsService } from './revisions.service.js';
     DatabaseModule,
     TypeOrmModule.forFeature([Revision]),
     // A restore goes through the same services as any change.
-    TaskModule,
+    TasksModule,
     EventsModule,
     ProjectsModule,
     DependenciesModule,

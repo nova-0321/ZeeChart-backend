@@ -44,7 +44,7 @@ export const asVersionDto = (version: ProjectVersion): VersionDto => ({
   content: version.content,
 });
 
-export class StarVersionDto {
+export class UpdateVersionDto {
   @IsBoolean()
   starred: boolean;
 }

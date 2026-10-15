@@ -3,7 +3,6 @@ import {
   type ExecutionContext,
   ForbiddenException,
   Injectable,
-  NotFoundException,
   SetMetadata,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -13,6 +12,7 @@ import { DataSource, type EntityManager, type EntityTarget, type ObjectLiteral }
 import type { AuthedRequest } from '../auth/auth.guard.js';
 import { type MemberRole, roleCovers } from '../members/member-role.js';
 import { roleIn } from '../members/membership.js';
+import { notFound, thingOf, type Thing } from '../common/not-found.js';
 
 // Only a project's members see it (and its tasks, links, events and members), and their role says
 // what they may change (see members/member-role.ts). Each route says how to find its project and
@@ -28,12 +28,13 @@ import { roleIn } from '../members/membership.js';
 /**
  * Finds the project a request is about. Runs before the handler and its pipes. Answers the project
  * id; `undefined` when there is nothing to check (no id, or a malformed one: the route answers that
- * itself); `null` for a well-formed id of a row that doesn't exist.
+ * itself); `null` for a well-formed id of a row that doesn't exist. `thing` is what it looks up
+ * (a task, a link...; none: the project), which the 404 names.
  */
-export type ProjectLocator = (
+export type ProjectLocator = ((
   request: Request,
   db: DataSource,
-) => Promise<string | null | undefined>;
+) => Promise<string | null | undefined>) & { thing?: Thing };
 
 export interface ProjectAccessOptions {
   role: MemberRole;
@@ -80,24 +81,26 @@ export const projectInParam =
  * The project of a row: its id is in the route parameter `key` (or, with `from: 'body'`, in that
  * field of the body), and the row has a `projectId` column.
  */
-export const projectOfRow =
-  (
-    entity: EntityTarget<ObjectLiteral>,
-    key = 'id',
-    from: 'param' | 'body' = 'param',
-  ): ProjectLocator =>
-  async (request, db) => {
-    const id = from === 'param' ? text(request.params[key]) : fromBody(request, key);
-    // Guards run before the route's ParseUUIDPipe: a malformed id never reaches the query.
-    if (!id || !isUUID(id)) return undefined;
-    const row = await db
-      .getRepository(entity)
-      .createQueryBuilder('row')
-      .select('row.projectId', 'projectId')
-      .where('row.id = :id', { id })
-      .getRawOne<{ projectId: string }>();
-    return row?.projectId ?? null;
-  };
+export const projectOfRow = (
+  entity: EntityTarget<ObjectLiteral>,
+  key = 'id',
+  from: 'param' | 'body' = 'param',
+): ProjectLocator =>
+  Object.assign(
+    async (request: Request, db: DataSource) => {
+      const id = from === 'param' ? text(request.params[key]) : fromBody(request, key);
+      // Guards run before the route's ParseUUIDPipe: a malformed id never reaches the query.
+      if (!id || !isUUID(id)) return undefined;
+      const row = await db
+        .getRepository(entity)
+        .createQueryBuilder('row')
+        .select('row.projectId', 'projectId')
+        .where('row.id = :id', { id })
+        .getRawOne<{ projectId: string }>();
+      return row?.projectId ?? null;
+    },
+    { thing: thingOf(entity) },
+  );
 
 /** What a member whose role is too low is told. */
 const refusal = (needed: MemberRole) =>
@@ -127,10 +130,11 @@ export class ProjectAccessGuard implements CanActivate {
     // for everyone.
     if (projectId === undefined || (projectId !== null && !isUUID(projectId))) return true;
     // A row that doesn't exist gets the same answer as one in a project you are not in, so the two
-    // can't be told apart.
-    if (projectId === null) throw new NotFoundException('Not found');
+    // can't be told apart: both "<the thing the route is about> not found".
+    const missing = notFound(access.project.thing ?? 'Project');
+    if (projectId === null) throw missing;
     const role = await roleIn(this.db, projectId, request.userId);
-    if (!role) throw new NotFoundException('Not found');
+    if (!role) throw missing;
     if (!roleCovers(role, access.role)) throw new ForbiddenException(refusal(access.role));
     if (access.role === 'editor' && !access.whileArchived && (await isArchived(this.db, projectId)))
       throw new ForbiddenException(ARCHIVED_MESSAGE);

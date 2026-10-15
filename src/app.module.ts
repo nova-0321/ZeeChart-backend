@@ -14,7 +14,7 @@ import { MembersModule } from './members/members.module.js';
 import { RevisionsModule } from './revisions/revisions.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
-import { TaskModule } from './tasks/task.module.js';
+import { TasksModule } from './tasks/tasks.module.js';
 import { DependenciesModule } from './dependencies/dependencies.module.js';
 import { DatabaseModule } from './database/database.module.js';
 
@@ -37,7 +37,7 @@ import { DatabaseModule } from './database/database.module.js';
     EventsModule,
     ProjectsModule,
     MembersModule,
-    TaskModule,
+    TasksModule,
     DependenciesModule,
     RealtimeModule,
     // After RealtimeModule: its interceptor runs inside the live one, so a change's history is

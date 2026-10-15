@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import type { TaskDto } from './dto/task.dto.js';
+import type { CreateTaskDto } from './dto/create-task.dto.js';
 import { Task } from './entities/task.entity.js';
-import { TaskService } from './task.service.js';
+import { TasksService } from './tasks.service.js';
 
 const PROJECT_ID = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
 const GROUP_ID = '0b1f1d6e-3c1a-4e0a-9d8b-5a5f6f7c8d90';
@@ -10,7 +10,7 @@ const GROUP_ID = '0b1f1d6e-3c1a-4e0a-9d8b-5a5f6f7c8d90';
 const projects = { exists: vi.fn() };
 
 /** What the add-task form sends: no progress, order, type, priority or parentId. */
-const formBody = (extra: Partial<TaskDto> = {}) =>
+const formBody = (extra: Partial<CreateTaskDto> = {}) =>
   ({
     name: 'Design review',
     projectId: PROJECT_ID,
@@ -18,7 +18,7 @@ const formBody = (extra: Partial<TaskDto> = {}) =>
     endDate: '2026-10-09',
     color: '#2a78d6',
     ...extra,
-  }) as TaskDto;
+  }) as CreateTaskDto;
 
 /** A level's row as the service reads it. */
 const row = (id: string, order: number, parentId: string | null = null) => ({
@@ -37,7 +37,7 @@ const writtenOrders = (update: { mock: { calls: unknown[][] } }) =>
       .map((call) => [(call[1] as { id: string }).id, (call[2] as { order: number }).order]),
   );
 
-describe('TaskService.create', () => {
+describe('TasksService.create', () => {
   const manager = { save: vi.fn(), update: vi.fn() };
   const repo = {
     create: vi.fn(),
@@ -46,7 +46,7 @@ describe('TaskService.create', () => {
     manager: { transaction: vi.fn() },
   };
   const scheduler = { saveAttached: vi.fn() };
-  let service: TaskService;
+  let service: TasksService;
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -65,7 +65,11 @@ describe('TaskService.create', () => {
         return { id: 't1', ...task };
       },
     );
-    service = new TaskService({ repo: () => repo } as never, scheduler as never, projects as never);
+    service = new TasksService(
+      { repo: () => repo } as never,
+      scheduler as never,
+      projects as never,
+    );
   });
 
   it('gives a task from the form progress 0 and the first order, so the insert has every required column', async () => {
@@ -149,10 +153,10 @@ describe('TaskService.create', () => {
   });
 });
 
-describe('TaskService.recreate', () => {
+describe('TasksService.recreate', () => {
   const manager = { save: vi.fn(), update: vi.fn() };
   const repo = { create: vi.fn(), find: vi.fn(), manager: { transaction: vi.fn() } };
-  let service: TaskService;
+  let service: TasksService;
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -161,7 +165,7 @@ describe('TaskService.recreate', () => {
       work(manager),
     );
     manager.save.mockImplementation((_entity: unknown, task: object) => Promise.resolve(task));
-    service = new TaskService({ repo: () => repo } as never, {} as never, projects as never);
+    service = new TasksService({ repo: () => repo } as never, {} as never, projects as never);
   });
 
   it('puts a deleted task back at its place, the others moved down', async () => {
@@ -172,7 +176,7 @@ describe('TaskService.recreate', () => {
   });
 });
 
-describe('TaskService.setParent', () => {
+describe('TasksService.setParent', () => {
   const manager = { save: vi.fn(), update: vi.fn() };
   const repo = {
     findOneByOrFail: vi.fn(),
@@ -181,7 +185,7 @@ describe('TaskService.setParent', () => {
     manager: { transaction: vi.fn() },
   };
   const scheduler = { saveAttached: vi.fn() };
-  let service: TaskService;
+  let service: TasksService;
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -196,7 +200,11 @@ describe('TaskService.setParent', () => {
         return task;
       },
     );
-    service = new TaskService({ repo: () => repo } as never, scheduler as never, projects as never);
+    service = new TasksService(
+      { repo: () => repo } as never,
+      scheduler as never,
+      projects as never,
+    );
   });
 
   it('puts the task under the group through the scheduler, which stretches the group', async () => {
@@ -249,7 +257,7 @@ describe('TaskService.setParent', () => {
   });
 });
 
-describe('TaskService.setParent on groups that loop (old data)', () => {
+describe('TasksService.setParent on groups that loop (old data)', () => {
   it('refuses a move under a group whose chain comes back to itself, instead of walking it forever', async () => {
     // p is inside q and q inside p; t is in neither, so the walk up from p never meets t.
     const rows: Record<string, object> = {
@@ -262,7 +270,7 @@ describe('TaskService.setParent on groups that loop (old data)', () => {
       findOneBy: vi.fn(({ id }: { id: string }) => Promise.resolve(rows[id] ?? null)),
     };
     const scheduler = { saveAttached: vi.fn() };
-    const service = new TaskService(
+    const service = new TasksService(
       { repo: () => repo } as never,
       scheduler as never,
       projects as never,
@@ -273,7 +281,7 @@ describe('TaskService.setParent on groups that loop (old data)', () => {
   });
 });
 
-describe('TaskService.update', () => {
+describe('TasksService.update', () => {
   const repo = { findOneByOrFail: vi.fn(), save: vi.fn() };
   const scheduler = { applyDateEdit: vi.fn() };
   const stored = () => ({
@@ -284,14 +292,18 @@ describe('TaskService.update', () => {
     startDate: '2026-10-07',
     endDate: '2026-10-09',
   });
-  let service: TaskService;
+  let service: TasksService;
 
   beforeEach(() => {
     vi.resetAllMocks();
     repo.save.mockImplementation((task: object) => Promise.resolve(task));
     repo.findOneByOrFail.mockResolvedValue(stored());
     scheduler.applyDateEdit.mockImplementation((task: object) => Promise.resolve(task));
-    service = new TaskService({ repo: () => repo } as never, scheduler as never, projects as never);
+    service = new TasksService(
+      { repo: () => repo } as never,
+      scheduler as never,
+      projects as never,
+    );
   });
 
   it('changes only the fields that were sent', async () => {
@@ -355,11 +367,11 @@ describe('TaskService.update', () => {
   });
 });
 
-describe('TaskService.remove', () => {
+describe('TasksService.remove', () => {
   const manager = { find: vi.fn(), delete: vi.fn(), update: vi.fn() };
   const repo = { findOneByOrFail: vi.fn(), manager: { transaction: vi.fn() } };
   const scheduler = { settle: vi.fn() };
-  let service: TaskService;
+  let service: TasksService;
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -367,7 +379,11 @@ describe('TaskService.remove', () => {
     repo.manager.transaction.mockImplementation((work: (m: typeof manager) => unknown) =>
       work(manager),
     );
-    service = new TaskService({ repo: () => repo } as never, scheduler as never, projects as never);
+    service = new TasksService(
+      { repo: () => repo } as never,
+      scheduler as never,
+      projects as never,
+    );
   });
 
   it('closes up the level a deleted task was in (no gap where it was)', async () => {
@@ -451,7 +467,7 @@ describe('TaskService.remove', () => {
   });
 });
 
-describe('TaskService.move', () => {
+describe('TasksService.move', () => {
   const manager = { update: vi.fn(), save: vi.fn() };
   const repo = {
     findOneByOrFail: vi.fn(),
@@ -460,7 +476,7 @@ describe('TaskService.move', () => {
     manager: { transaction: vi.fn() },
   };
   const scheduler = { saveAttached: vi.fn() };
-  let service: TaskService;
+  let service: TasksService;
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -474,7 +490,11 @@ describe('TaskService.move', () => {
         return task;
       },
     );
-    service = new TaskService({ repo: () => repo } as never, scheduler as never, projects as never);
+    service = new TasksService(
+      { repo: () => repo } as never,
+      scheduler as never,
+      projects as never,
+    );
   });
 
   it('puts a task at a new place in its level and numbers the level again', async () => {

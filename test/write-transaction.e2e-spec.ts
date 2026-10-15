@@ -8,7 +8,7 @@ import { createValidationPipe } from '../src/common/validation.js';
 import { RevisionsService } from '../src/revisions/history/revisions.service.js';
 import { VersionsService } from '../src/revisions/versions/versions.service.js';
 import { TaskScheduler } from '../src/tasks/scheduling/task-scheduler.service.js';
-import { TaskService } from '../src/tasks/task.service.js';
+import { TasksService } from '../src/tasks/tasks.service.js';
 import { deleteTestAccounts } from './cleanup.js';
 
 /** An index past the end of any list: /move puts the task last (as the removed /parent did). */
@@ -159,7 +159,7 @@ describe('A write and its history: all or nothing (e2e)', () => {
       await as(http().get(`/projects/${projectId}/revisions?limit=100`)).expect(200)
     ).body as { id: string; entityId: string; action: string }[];
     const created = revisions.find((r) => r.entityId === task.id && r.action === 'create')!;
-    vi.spyOn(app.get(TaskService), 'update').mockRejectedValueOnce(new Error('refused'));
+    vi.spyOn(app.get(TasksService), 'update').mockRejectedValueOnce(new Error('refused'));
 
     await as(http().post(`/revisions/${created.id}/restore`)).expect(500);
 

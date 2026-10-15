@@ -1,6 +1,6 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { TaskDto } from './task.dto.js';
+import { CreateTaskDto } from './create-task.dto.js';
 
 const PROJECT_ID = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
 
@@ -15,11 +15,11 @@ const minimal = {
 
 /** Runs the same transform + validation as the global ValidationPipe and returns the bad fields. */
 async function badFields(body: Record<string, unknown>) {
-  const errors = await validate(plainToInstance(TaskDto, body));
+  const errors = await validate(plainToInstance(CreateTaskDto, body));
   return errors.map((error) => error.property).sort();
 }
 
-describe('TaskDto', () => {
+describe('CreateTaskDto', () => {
   it('accepts the fields the add-task form sends, with no parentId, progress, order, type or priority', async () => {
     expect(await badFields(minimal)).toEqual([]);
   });
@@ -35,7 +35,7 @@ describe('TaskDto', () => {
 
   it('rejects an empty or whitespace-only name, and trims a padded one', async () => {
     expect(await badFields({ ...minimal, name: '   ' })).toEqual(['name']);
-    expect(plainToInstance(TaskDto, { ...minimal, name: '  Plan  ' }).name).toBe('Plan');
+    expect(plainToInstance(CreateTaskDto, { ...minimal, name: '  Plan  ' }).name).toBe('Plan');
   });
 
   it('rejects a name longer than the 255 characters the column was meant for', async () => {

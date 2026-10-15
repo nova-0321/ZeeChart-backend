@@ -9,6 +9,7 @@ import {
 import { HttpAdapterHost } from '@nestjs/core';
 import { EntityNotFoundError, QueryFailedError } from 'typeorm';
 import { ScheduleError } from '../tasks/scheduling/schedule.js';
+import { notFound, thingOf } from './not-found.js';
 
 interface ErrorInfo {
   status: number;
@@ -85,9 +86,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return { status: HttpStatus.BAD_REQUEST, message: exception.message };
     }
 
-    // repository.findOneByOrFail(...) and friends
+    // repository.findOneByOrFail(...) and friends: "<Thing> not found", like every other 404.
     if (exception instanceof EntityNotFoundError) {
-      return { status: HttpStatus.NOT_FOUND, message: 'Resource not found' };
+      return {
+        status: HttpStatus.NOT_FOUND,
+        message: notFound(thingOf(exception.entityClass)).message,
+      };
     }
 
     if (exception instanceof QueryFailedError) {

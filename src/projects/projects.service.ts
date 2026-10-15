@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { RequestTransaction } from '../database/request-transaction.js';
 import { rejectNulls } from '../common/reject-nulls.js';
@@ -14,6 +14,7 @@ import { CreateProjectDto } from './dto/create-project.dto.js';
 import { asMyProject, type MyProjectDto } from './dto/my-project.dto.js';
 import { UpdateProjectDto } from './dto/update-project.dto.js';
 import { Project } from './entities/project.entity.js';
+import { notFound } from '../common/not-found.js';
 
 @Injectable()
 export class ProjectsService {
@@ -63,7 +64,7 @@ export class ProjectsService {
       .setLock('pessimistic_write')
       .where('project.id = :id', { id })
       .getOne();
-    if (!project) throw new NotFoundException('Not found');
+    if (!project) throw notFound('Project');
   }
 
   /**
@@ -72,7 +73,7 @@ export class ProjectsService {
    */
   async assertNewOwnerNameFree(manager: EntityManager, id: string, userId: string): Promise<void> {
     const project = await manager.findOneBy(Project, { id });
-    if (!project) throw new NotFoundException('Not found');
+    if (!project) throw notFound('Project');
     await assertNameFree(
       manager,
       userId,
@@ -90,7 +91,7 @@ export class ProjectsService {
   /** One project, with `userId`'s place in it; 404 when they are not a member. */
   async findOne(id: string, userId: string): Promise<MyProjectDto> {
     const membership = await membershipOf(this.tx.manager, id, userId);
-    if (!membership) throw new NotFoundException(`Project ${id} not found`);
+    if (!membership) throw notFound('Project');
     return asMyProject(membership);
   }
 
@@ -99,7 +100,7 @@ export class ProjectsService {
     rejectNulls(updateProjectDto, ['description']);
     await this.tx.run(async (manager) => {
       const project = await manager.findOneBy(Project, { id });
-      if (!project) throw new NotFoundException(`Project ${id} not found`);
+      if (!project) throw notFound('Project');
       const { name } = updateProjectDto;
       if (name !== undefined && name !== project.name) {
         // Not only the one renaming it: every owner of it, so none ends up owning two of a name.
@@ -123,7 +124,7 @@ export class ProjectsService {
   /** Its tasks, links, events and members go with it (ON DELETE CASCADE). */
   async remove(id: string) {
     const project = await this.projectRepo.findOneBy({ id });
-    if (!project) throw new NotFoundException(`Project ${id} not found`);
+    if (!project) throw notFound('Project');
     await this.projectRepo.remove(project);
   }
 }

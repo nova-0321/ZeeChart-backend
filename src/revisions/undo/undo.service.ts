@@ -1,9 +1,4 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { RequestTransaction } from '../../database/request-transaction.js';
 import { roleIn } from '../../members/membership.js';
@@ -37,6 +32,7 @@ import {
   taskTreeOf,
   writeTask,
 } from '../../tasks/task-rows.js';
+import { notFound } from '../../common/not-found.js';
 
 /**
  * Undo and redo of one person's own changes in a project, whatever tab or device they made them
@@ -139,7 +135,7 @@ export class UndoService {
     direction: 'undo' | 'redo',
   ): Promise<Applied> {
     const revisions = await this.revisionRepo.find({ where: { batchId, projectId } });
-    if (revisions.length === 0) throw new NotFoundException('Not found');
+    if (revisions.length === 0) throw notFound('Change');
     if (
       revisions.some((revision) => revision.entityType === 'project') &&
       (await roleIn(this.tx.manager, projectId, userId)) !== 'owner'

@@ -605,7 +605,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ChangeRoleDto"
+                "$ref": "#/components/schemas/UpdateMemberDto"
               }
             }
           }
@@ -715,7 +715,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AddMemberDto"
+                "$ref": "#/components/schemas/CreateInvitationDto"
               }
             }
           }
@@ -879,7 +879,7 @@
     },
     "/tasks": {
       "get": {
-        "operationId": "Task_findByProject",
+        "operationId": "Tasks_findByProject",
         "parameters": [
           {
             "name": "projectId",
@@ -916,14 +916,14 @@
         ]
       },
       "post": {
-        "operationId": "Task_create",
+        "operationId": "Tasks_create",
         "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/TaskDto"
+                "$ref": "#/components/schemas/CreateTaskDto"
               }
             }
           }
@@ -964,7 +964,7 @@
     },
     "/tasks/{id}": {
       "patch": {
-        "operationId": "Task_update",
+        "operationId": "Tasks_update",
         "parameters": [
           {
             "name": "id",
@@ -1039,7 +1039,7 @@
         ]
       },
       "delete": {
-        "operationId": "Task_remove",
+        "operationId": "Tasks_remove",
         "parameters": [
           {
             "name": "id",
@@ -1087,7 +1087,7 @@
     },
     "/tasks/{id}/move": {
       "patch": {
-        "operationId": "Task_move",
+        "operationId": "Tasks_move",
         "parameters": [
           {
             "name": "id",
@@ -1164,7 +1164,7 @@
     },
     "/tasks/{id}/type": {
       "patch": {
-        "operationId": "Task_changeType",
+        "operationId": "Tasks_changeType",
         "parameters": [
           {
             "name": "id",
@@ -1189,7 +1189,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ChangeTypeDto"
+                "$ref": "#/components/schemas/ChangeTaskTypeDto"
               }
             }
           }
@@ -1240,7 +1240,7 @@
     },
     "/dependencies": {
       "get": {
-        "operationId": "Dependency_findByProject",
+        "operationId": "Dependencies_findByProject",
         "parameters": [
           {
             "name": "projectId",
@@ -1277,14 +1277,14 @@
         ]
       },
       "post": {
-        "operationId": "Dependency_create",
+        "operationId": "Dependencies_create",
         "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DependencyDto"
+                "$ref": "#/components/schemas/CreateDependencyDto"
               }
             }
           }
@@ -1326,7 +1326,7 @@
     },
     "/dependencies/{id}": {
       "patch": {
-        "operationId": "Dependency_update",
+        "operationId": "Dependencies_update",
         "parameters": [
           {
             "name": "id",
@@ -1401,7 +1401,7 @@
         ]
       },
       "delete": {
-        "operationId": "Dependency_remove",
+        "operationId": "Dependencies_remove",
         "parameters": [
           {
             "name": "id",
@@ -1841,7 +1841,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/StarVersionDto"
+                "$ref": "#/components/schemas/UpdateVersionDto"
               }
             }
           }
@@ -2808,7 +2808,7 @@
           "joinedAt"
         ]
       },
-      "ChangeRoleDto": {
+      "UpdateMemberDto": {
         "type": "object",
         "properties": {
           "role": {
@@ -2872,7 +2872,7 @@
           "expiresAt"
         ]
       },
-      "AddMemberDto": {
+      "CreateInvitationDto": {
         "type": "object",
         "properties": {
           "role": {
@@ -3012,7 +3012,7 @@
           "alreadyMember"
         ]
       },
-      "TaskDto": {
+      "CreateTaskDto": {
         "type": "object",
         "properties": {
           "name": {
@@ -3150,7 +3150,7 @@
           "index"
         ]
       },
-      "ChangeTypeDto": {
+      "ChangeTaskTypeDto": {
         "type": "object",
         "properties": {
           "type": {
@@ -3218,7 +3218,7 @@
           "toTask"
         ]
       },
-      "DependencyDto": {
+      "CreateDependencyDto": {
         "type": "object",
         "properties": {
           "lagDays": {
@@ -3577,7 +3577,7 @@
           "events"
         ]
       },
-      "StarVersionDto": {
+      "UpdateVersionDto": {
         "type": "object",
         "properties": {
           "starred": {
