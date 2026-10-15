@@ -26,6 +26,7 @@ import { DependencyDto } from './dto/dependency.dto.js';
 import { UpdateDependencyDto } from './dto/update-dependency.dto.js';
 import { TaskDependency } from './entities/task-dependency.entity.js';
 import { projectOfTask } from '../tasks/task-project.js';
+import { AnswerWithChanges } from '../realtime/dto/row-changes.dto.js';
 
 // Each route says the role it needs in the project (@ProjectAccess: viewers read, editors change;
 // 404 for non-members) and each write who is told after it (@Broadcast: everyone with it open).
@@ -47,6 +48,7 @@ export class DependencyController {
   // A new link's project is its first task's (the service checks both tasks share it).
   @Post()
   @ProjectAccess('editor', projectOfTask('fromTaskId', 'body'))
+  @AnswerWithChanges('TaskDependency', 201)
   @Broadcast({
     entity: 'dependency',
     action: 'create',
@@ -60,6 +62,7 @@ export class DependencyController {
   @Patch(':id')
   @IfMatch()
   @ProjectAccess('editor', projectOfRow(TaskDependency))
+  @AnswerWithChanges('TaskDependency')
   @Broadcast({ entity: 'dependency', action: 'update', project: projectOfRow(TaskDependency) })
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateDependencyDto) {
     return this.dependencyService.update(id, dto);

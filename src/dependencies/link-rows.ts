@@ -1,4 +1,5 @@
-import type { EntityManager } from 'typeorm';
+import { In, type EntityManager } from 'typeorm';
+import { TaskDependency } from './entities/task-dependency.entity.js';
 import { versionedRows } from '../database/versioned-rows.js';
 import { existingTaskIds } from '../tasks/task-rows.js';
 
@@ -53,4 +54,9 @@ export async function writeLink(
 /** Removes all the project's links (restoring a version writes the version's back). */
 export async function deleteLinksOf(manager: EntityManager, projectId: string) {
   await manager.query(`DELETE FROM "task_dependencies" WHERE "projectId" = $1`, [projectId]);
+}
+
+/** Links as the REST API returns them: the rows a write changed, sent with it (#75). */
+export function linksWithIds(manager: EntityManager, ids: string[]): Promise<TaskDependency[]> {
+  return ids.length === 0 ? Promise.resolve([]) : manager.findBy(TaskDependency, { id: In(ids) });
 }

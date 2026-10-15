@@ -26,6 +26,7 @@ import { CreateEventDto } from './dto/create-event.dto.js';
 import { UpdateEventDto } from './dto/update-event.dto.js';
 import { ProjectEvent } from './entities/project-event.entity.js';
 import { EventsService } from './events.service.js';
+import { AnswerWithChanges } from '../realtime/dto/row-changes.dto.js';
 
 // Each route says the role it needs in the project (@ProjectAccess: viewers read, editors change;
 // 404 for non-members) and each write who is told after it (@Broadcast: everyone with it open).
@@ -45,6 +46,7 @@ export class EventsController {
 
   @Post()
   @ProjectAccess('editor', projectInBody())
+  @AnswerWithChanges('ProjectEvent', 201)
   @Broadcast({ entity: 'event', action: 'create', project: projectInBody() })
   create(@Body() dto: CreateEventDto) {
     return this.eventsService.create(dto);
@@ -54,6 +56,7 @@ export class EventsController {
   @Patch(':id')
   @IfMatch()
   @ProjectAccess('editor', projectOfRow(ProjectEvent))
+  @AnswerWithChanges('ProjectEvent')
   @Broadcast({ entity: 'event', action: 'update', project: projectOfRow(ProjectEvent) })
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateEventDto) {
     return this.eventsService.update(id, dto);

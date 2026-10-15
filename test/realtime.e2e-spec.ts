@@ -11,13 +11,15 @@ import { AppModule } from '../src/app.module.js';
 import { deleteTestAccounts } from './cleanup.js';
 import { Member } from '../src/members/entities/member.entity.js';
 import { Project } from '../src/projects/entities/project.entity.js';
+import { Task } from '../src/tasks/entities/task.entity.js';
 import { RealtimeGateway } from '../src/realtime/realtime.gateway.js';
 import { clientRoom, projectRoom } from '../src/realtime/realtime.rooms.js';
 import { RealtimeService } from '../src/realtime/realtime.service.js';
-import type {
-  ChangeMessage,
-  CursorMessage,
-  PresenceMessage,
+import {
+  MAX_CHANGED_ROWS,
+  type ChangeMessage,
+  type CursorMessage,
+  type PresenceMessage,
 } from '../src/realtime/realtime.types.js';
 import { TaskService } from '../src/tasks/task.service.js';
 import { ConfiguredIoAdapter } from '../src/realtime/socket-io.adapter.js';
@@ -29,6 +31,7 @@ describe('Realtime (e2e)', () => {
   let app: INestApplication;
   let url: string;
   let projects: Repository<Project>;
+  let tasks: Repository<Task>;
   let gateway: RealtimeGateway;
   let realtime: RealtimeService;
   const sockets: Socket[] = [];
@@ -92,6 +95,9 @@ describe('Realtime (e2e)', () => {
     return got;
   };
   const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
+  /** A message without the rows it carries (#75: those are checked on their own). */
+  const head = (message: ChangeMessage) =>
+    Object.fromEntries(Object.entries(message).filter(([key]) => key !== 'changes'));
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -102,6 +108,7 @@ describe('Realtime (e2e)', () => {
     await app.listen(0);
     url = `http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`;
     projects = app.get(getRepositoryToken(Project));
+    tasks = app.get(getRepositoryToken(Task));
     gateway = app.get(RealtimeGateway);
     realtime = app.get(RealtimeService);
     const signedUp = (
@@ -365,7 +372,9 @@ describe('Realtime (e2e)', () => {
       }[];
       expect(now.find((t) => t.id === next.id)!.startDate.slice(0, 10) > '2026-11-27').toBe(true);
       expect(now.find((t) => t.id === group.id)!.endDate.slice(0, 10)).toBe('2026-11-27');
-      expect(toOther).toEqual([{ projectId, entity: 'task', action: 'update', id: child.id }]);
+      expect(toOther.map(head)).toEqual([
+        { projectId, entity: 'task', action: 'update', id: child.id },
+      ]);
     });
 
     it('a refused change (4xx) sends nothing', async () => {
@@ -424,7 +433,7 @@ describe('Realtime (e2e)', () => {
       await as(http().post('/dependencies')).send({ fromTaskId: a.id, toTaskId: a.id }).expect(400);
       await settle();
       expect(toSender).toEqual([]);
-      expect(toOther).toEqual([
+      expect(toOther.map(head)).toEqual([
         { projectId, entity: 'dependency', action: 'create', id: link.id },
         { projectId, entity: 'dependency', action: 'update', id: link.id },
         { projectId, entity: 'dependency', action: 'delete', id: link.id },
@@ -451,7 +460,7 @@ describe('Realtime (e2e)', () => {
       await as(http().delete(`/events/${event.id}`)).expect(204);
       await settle();
       expect(toSender).toEqual([]);
-      expect(toOther).toEqual([
+      expect(toOther.map(head)).toEqual([
         { projectId, entity: 'event', action: 'create', id: event.id },
         { projectId, entity: 'event', action: 'update', id: event.id },
         { projectId, entity: 'event', action: 'delete', id: event.id },
@@ -475,12 +484,196 @@ describe('Realtime (e2e)', () => {
       await as(http().delete(`/projects/${projectId}`)).expect(200);
       await settle();
       expect(toSender).toEqual([]);
-      expect(toOther).toEqual([
+      expect(toOther.map(head)).toEqual([
         { projectId, entity: 'project', action: 'update', id: projectId },
         { projectId, entity: 'project', action: 'update', id: projectId },
         { projectId, entity: 'project', action: 'update', id: projectId },
         { projectId, entity: 'project', action: 'delete', id: projectId },
       ]);
+    });
+    // #75: a change carries the rows it changed, so the others (and the tab that made it, in its
+    // answer) show them without loading the project again.
+    describe('changed rows', () => {
+      interface Row {
+        id: string;
+        version: number;
+        startDate?: string;
+        endDate?: string;
+      }
+      const ids = (rows: Row[] | undefined) => (rows ?? []).map((row) => row.id).sort();
+
+      it('a date edit sends the tasks it moved, with their new versions; the answer has the same', async () => {
+        const { projectId, senderId, toOther } = await watched('c1');
+        const group = await newTask(projectId, senderId, 'Group', { type: 'group' });
+        const child = await newTask(projectId, senderId, 'Child', { parentId: group.id });
+        const next = await newTask(projectId, senderId, 'Next', {
+          startDate: '2026-11-09',
+          endDate: '2026-11-10',
+        });
+        const other = await newTask(projectId, senderId, 'Untouched', {
+          startDate: '2026-12-01',
+          endDate: '2026-12-02',
+        });
+        await http().post('/dependencies').send({ fromTaskId: child.id, toTaskId: next.id });
+        await settle();
+        toOther.length = 0;
+
+        const answer = (
+          await http()
+            .patch(`/tasks/${child.id}`)
+            .set('X-Client-Id', senderId)
+            .send({ startDate: '2026-11-23', endDate: '2026-11-27' })
+            .expect(200)
+        ).body as Row & { changes: { tasks: { upsert: Row[]; delete: string[] } } };
+        await settle();
+
+        const [message] = toOther;
+        const sent = message!.changes!.tasks as { upsert: Row[]; delete: string[] };
+        // The edited task, the group it stretched and the task it pushed; not the others.
+        expect(ids(sent.upsert)).toEqual([child.id, group.id, next.id].sort());
+        expect(sent.upsert.some((row) => row.id === other.id)).toBe(false);
+        expect(sent.delete).toEqual([]);
+        expect(message!.changes!.dependencies).toBeUndefined();
+        // As the REST API has them now, versions included.
+        const now = (await http().get(`/tasks?projectId=${projectId}`).expect(200)).body as Row[];
+        for (const row of sent.upsert) {
+          expect(row).toEqual(now.find((task) => task.id === row.id));
+        }
+        // The tab that made it is not sent the message: its answer carries the same rows.
+        expect(answer.changes).toEqual(message!.changes);
+        expect(answer.version).toBe(now.find((task) => task.id === child.id)!.version);
+      });
+
+      it('a delete sends the ids it deleted (the task, and its links)', async () => {
+        const { projectId, senderId, toOther } = await watched('c2');
+        const a = await newTask(projectId, senderId, 'A');
+        const b = await newTask(projectId, senderId, 'B', {
+          startDate: '2026-11-09',
+          endDate: '2026-11-10',
+        });
+        const link = (
+          await http().post('/dependencies').send({ fromTaskId: a.id, toTaskId: b.id }).expect(201)
+        ).body as { id: string; changes: { dependencies: { upsert: Row[] } } };
+        // The new link is in the answer that made it.
+        expect(ids(link.changes.dependencies.upsert)).toEqual([link.id]);
+        await settle();
+        toOther.length = 0;
+
+        await http().delete(`/tasks/${a.id}`).set('X-Client-Id', senderId).expect(204);
+        await settle();
+
+        expect(toOther[0]!.changes).toEqual({
+          tasks: { upsert: [], delete: [a.id] },
+          dependencies: { upsert: [], delete: [link.id] },
+        });
+      });
+
+      it('events and the project send their rows too', async () => {
+        const { projectId, senderId, toOther } = await watched('c3');
+        const as = (call: request.Test) => call.set('X-Client-Id', senderId);
+        const event = (
+          await as(http().post('/events'))
+            .send({
+              projectId,
+              name: 'Launch',
+              color: '#e5484d',
+              startDate: '2026-11-16',
+              endDate: '2026-11-18',
+            })
+            .expect(201)
+        ).body as Row & { changes: { events: { upsert: Row[] } } };
+        expect(ids(event.changes.events.upsert)).toEqual([event.id]);
+        await as(http().patch(`/projects/${projectId}`))
+          .send({ description: 'New plan' })
+          .expect(200);
+        await settle();
+
+        expect(ids(toOther[0]!.changes!.events!.upsert as Row[])).toEqual([event.id]);
+        expect(toOther[1]!.changes).toEqual({
+          project: {
+            id: projectId,
+            name: expect.any(String) as unknown,
+            description: 'New plan',
+            archived: false,
+            version: expect.any(Number) as unknown,
+          },
+        });
+      });
+
+      it('saving a version changes no row ({}); restoring one sends none (load again)', async () => {
+        const { projectId, senderId, toOther } = await watched('c4');
+        await newTask(projectId, senderId, 'A');
+        const version = (
+          await http()
+            .post(`/projects/${projectId}/versions`)
+            .set('X-Client-Id', senderId)
+            .expect((response) => expect(response.status).toBeLessThan(300))
+        ).body as { id: string };
+        await newTask(projectId, senderId, 'B');
+        await settle();
+        toOther.length = 0;
+
+        await http()
+          .post(`/versions/${version.id}/restore`)
+          .set('X-Client-Id', senderId)
+          .expect((response) => expect(response.status).toBeLessThan(300));
+        await settle();
+
+        expect(toOther.map(head)).toEqual([
+          { projectId, entity: 'version', action: 'update', id: version.id },
+        ]);
+        expect(toOther[0]!.changes).toBeUndefined();
+      });
+
+      it('saving a version sends an empty change: no row changed', async () => {
+        const { projectId, senderId, toOther } = await watched('c5');
+        await newTask(projectId, senderId, 'A');
+        await settle();
+        toOther.length = 0;
+        await http()
+          .post(`/projects/${projectId}/versions`)
+          .set('X-Client-Id', senderId)
+          .expect((response) => expect(response.status).toBeLessThan(300));
+        await settle();
+        expect(toOther[0]!.changes).toEqual({});
+      });
+
+      it(`over ${MAX_CHANGED_ROWS} changed rows: no rows, in the message or the answer`, async () => {
+        const { projectId, senderId, toOther } = await watched('c6');
+        // Many tasks at the top level (made straight in the table: hundreds of requests are slow).
+        await tasks.save(
+          Array.from({ length: MAX_CHANGED_ROWS + 5 }, (_, i) =>
+            tasks.create({
+              projectId,
+              name: `Bulk ${i}`,
+              color: '#2a78d6',
+              startDate: '2026-11-02',
+              endDate: '2026-11-06',
+              order: i + 1,
+              progress: 0,
+              priority: 'medium',
+            }),
+          ),
+        );
+        const last = await tasks.findOneByOrFail({ projectId, order: MAX_CHANGED_ROWS + 5 });
+        toOther.length = 0;
+
+        // To the top: every task of the level is numbered again.
+        const answer = (
+          await http()
+            .patch(`/tasks/${last.id}/move`)
+            .set('X-Client-Id', senderId)
+            .send({ parentId: null, index: 0 })
+            .expect(200)
+        ).body as { changes?: unknown };
+        await settle();
+
+        expect(toOther.map(head)).toEqual([
+          { projectId, entity: 'task', action: 'update', id: last.id },
+        ]);
+        expect(toOther[0]!.changes).toBeUndefined();
+        expect(answer.changes).toBeUndefined();
+      });
     });
   });
 

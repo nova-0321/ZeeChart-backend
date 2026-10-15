@@ -16,6 +16,11 @@ export interface BroadcastOptions {
   entity: RealtimeEntity;
   action: Exclude<RealtimeAction, 'resync'>;
   project: ProjectLocator;
+  /**
+   * false: the message never carries the changed rows (a restore puts back a whole plan or a row's
+   * past: whoever has the project open loads it again). See RowChanges.
+   */
+  rows?: false;
 }
 
 export const BROADCAST = 'realtime:broadcast';
