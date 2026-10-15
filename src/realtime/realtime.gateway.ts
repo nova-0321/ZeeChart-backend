@@ -16,6 +16,7 @@ import { DataSource } from 'typeorm';
 import { AuthService } from '../auth/auth.service.js';
 import { isCurrentToken, SessionEvents, type TokenPayload } from '../auth/token.js';
 import { roleIn } from '../members/membership.js';
+import { notFound } from '../common/not-found.js';
 import {
   clientRoom,
   isProjectRoom,
@@ -221,7 +222,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.logger.error(`Could not check project ${projectId}`, error as Error);
       return { ok: false, error: 'Could not check the project. Try again.' };
     }
-    if (!member) return { ok: false, error: `Project ${projectId} not found` };
+    if (!member) return { ok: false, error: notFound('Project').message };
     const left = await this.leaveProjects(socket, projectRoom(projectId));
     await socket.join(projectRoom(projectId));
     // Removed while this was on its way (the removal took their tabs out before this one was in):
@@ -229,7 +230,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     if ((await roleIn(this.db, projectId, dataOf(socket).userId).catch(() => null)) === null) {
       await socket.leave(projectRoom(projectId));
       await Promise.all(left.map((id) => this.announce(id)));
-      return { ok: false, error: `Project ${projectId} not found` };
+      return { ok: false, error: notFound('Project').message };
     }
     dataOf(socket).projectId = projectId;
     this.logger.debug(`${socket.id} joined ${projectRoom(projectId)}`);

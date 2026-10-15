@@ -3,7 +3,7 @@ import { Transform } from 'class-transformer';
 import { IsEmail, IsIn, IsOptional, MaxLength } from 'class-validator';
 import { MEMBER_ROLES, type MemberRole } from '../member-role.js';
 
-export class AddMemberDto {
+export class CreateInvitationDto {
   /**
    * The email they signed up with. Trimmed and lower-cased, as on sign-up. (Names are not unique,
    * so a member is found by email only.)

@@ -1,21 +1,17 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { RequestTransaction } from '../../database/request-transaction.js';
-import { DependencyService } from '../../dependencies/dependency.service.js';
+import { DependenciesService } from '../../dependencies/dependencies.service.js';
 import { EventsService } from '../../events/events.service.js';
 import { roleIn } from '../../members/membership.js';
 import { ProjectsService } from '../../projects/projects.service.js';
-import { TaskService } from '../../tasks/task.service.js';
+import { TasksService } from '../../tasks/tasks.service.js';
 import { Revision } from '../entities/revision.entity.js';
 import type { RestoreResultDto as RestoreResult } from './dto/restore-result.dto.js';
 import { type EventState, type ProjectState, stateOf, type TaskState } from './revision-diff.js';
+import { notFound } from '../../common/not-found.js';
 
-/** A task's type, as TaskService takes it. */
-type TaskType = Parameters<TaskService['changeType']>[1];
+/** A task's type, as TasksService takes it. */
+type TaskType = Parameters<TasksService['changeType']>[1];
 
 /**
  * Restoring a task, an event or the project from one revision of its history. It goes through the
@@ -27,10 +23,10 @@ type TaskType = Parameters<TaskService['changeType']>[1];
 export class RestoreService {
   constructor(
     private readonly tx: RequestTransaction,
-    private readonly tasks: TaskService,
+    private readonly tasks: TasksService,
     private readonly events: EventsService,
     private readonly projects: ProjectsService,
-    private readonly links: DependencyService,
+    private readonly links: DependenciesService,
   ) {}
 
   private get revisionRepo() {
@@ -48,7 +44,7 @@ export class RestoreService {
 
   private async restoreNow(id: string, userId: string): Promise<RestoreResult> {
     const revision = await this.revisionRepo.findOneBy({ id });
-    if (!revision) throw new NotFoundException('Not found');
+    if (!revision) throw notFound('Revision');
     const state = stateOf(revision);
     if (!state) throw new BadRequestException('This revision has nothing to restore');
     const result: RestoreResult = {

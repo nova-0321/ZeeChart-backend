@@ -1,8 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
-import { DEPENDENCY_TYPES, MAX_LAG_DAYS, type DependencyType } from '../dependency.constants.js';
+import { DEPENDENCY_TYPES, MAX_LAG_DAYS, type DependencyType } from '../dependencies.constants.js';
 
-export class DependencyDto {
+export class CreateDependencyDto {
   /** The predecessor task. */
   @IsUUID()
   fromTaskId: string;

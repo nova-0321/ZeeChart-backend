@@ -18,9 +18,9 @@ import {
   TASK_TYPES,
   type TaskPriority,
   type TaskType,
-} from '../task.constants.js';
+} from '../tasks.constants.js';
 
-export class TaskDto {
+export class CreateTaskDto {
   // Trimmed before validation, so a name of only spaces is rejected as empty.
   @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()

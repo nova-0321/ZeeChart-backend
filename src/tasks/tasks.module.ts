@@ -5,8 +5,8 @@ import { AuthModule } from '../auth/auth.module.js';
 import { ProjectsModule } from '../projects/projects.module.js';
 import { SchedulingModule } from './scheduling/scheduling.module.js';
 import { Task } from './entities/task.entity.js';
-import { TaskController } from './task.controller.js';
-import { TaskService } from './task.service.js';
+import { TasksController } from './tasks.controller.js';
+import { TasksService } from './tasks.service.js';
 
 /** Tasks: create, edit, move, regroup, delete. Date changes go through scheduling. */
 @Module({
@@ -20,8 +20,8 @@ import { TaskService } from './task.service.js';
     // Whether a task's project exists (ProjectsService).
     ProjectsModule,
   ],
-  controllers: [TaskController],
-  providers: [TaskService],
-  exports: [TaskService],
+  controllers: [TasksController],
+  providers: [TasksService],
+  exports: [TasksService],
 })
-export class TaskModule {}
+export class TasksModule {}

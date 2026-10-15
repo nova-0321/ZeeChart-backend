@@ -21,8 +21,8 @@ import {
   ProjectAccessGuard,
 } from '../projects/project-access.js';
 import { Broadcast } from '../realtime/broadcast.decorator.js';
-import { DependencyService } from './dependency.service.js';
-import { DependencyDto } from './dto/dependency.dto.js';
+import { DependenciesService } from './dependencies.service.js';
+import { CreateDependencyDto } from './dto/create-dependency.dto.js';
 import { UpdateDependencyDto } from './dto/update-dependency.dto.js';
 import { TaskDependency } from './entities/task-dependency.entity.js';
 import { projectOfTask } from '../tasks/task-project.js';
@@ -34,8 +34,8 @@ import { AnswerWithChanges } from '../realtime/dto/row-changes.dto.js';
 @Controller('dependencies')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
-export class DependencyController {
-  constructor(private readonly dependencyService: DependencyService) {}
+export class DependenciesController {
+  constructor(private readonly dependencyService: DependenciesService) {}
 
   /** Every link between the tasks of a project. */
   @Get()
@@ -54,7 +54,7 @@ export class DependencyController {
     action: 'create',
     project: projectOfTask('fromTaskId', 'body'),
   })
-  create(@Body() dto: DependencyDto) {
+  create(@Body() dto: CreateDependencyDto) {
     return this.dependencyService.create(dto);
   }
 

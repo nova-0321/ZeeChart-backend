@@ -28,7 +28,7 @@ import type { MyProjectDto } from '../../projects/dto/my-project.dto.js';
 import { Broadcast, NoBroadcast } from '../../realtime/broadcast.decorator.js';
 import {
   type RestoreVersionResultDto,
-  StarVersionDto,
+  UpdateVersionDto,
   VersionDto,
   type VersionSummaryDto,
 } from './dto/version.dto.js';
@@ -101,7 +101,7 @@ export class VersionsController {
   @Patch(':id')
   @ProjectAccess('editor', projectOfRow(ProjectVersion), { whileArchived: true })
   @Broadcast({ entity: 'version', action: 'update', project: projectOfRow(ProjectVersion) })
-  star(@Param('id', ParseUUIDPipe) id: string, @Body() dto: StarVersionDto): Promise<VersionDto> {
+  star(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateVersionDto): Promise<VersionDto> {
     return this.versions.star(id, dto.starred);
   }
 

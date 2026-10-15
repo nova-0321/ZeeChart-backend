@@ -63,7 +63,7 @@ flowchart TB
 
 Only the repository talks to Postgres. The controller turns HTTP into a plain
 function call (and the result back into a response). The service decides what
-"not found" means, and Nest turns a thrown `NotFoundException` into a 404.
+"not found" means, and Nest turns what it throws (`notFound('Task')`, a `NotFoundException`) into a 404.
 
 ```mermaid
 sequenceDiagram

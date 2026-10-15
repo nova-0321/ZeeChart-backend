@@ -11,7 +11,7 @@ const LAST = 10_000;
 
 // What undo, restoring from the history and restoring a version write back, kind of row by kind of
 // row. Since #55 each kind is written by the domain that owns it (task-rows.ts, link-rows.ts,
-// event-rows.ts, project-rows.ts, membership.ts, TaskService, EventsService); these are the cases
+// event-rows.ts, project-rows.ts, membership.ts, TasksService, EventsService); these are the cases
 // the other history tests don't reach.
 
 interface Account {

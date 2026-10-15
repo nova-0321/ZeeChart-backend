@@ -22,12 +22,12 @@ import {
   ProjectAccessGuard,
 } from '../projects/project-access.js';
 import { Broadcast } from '../realtime/broadcast.decorator.js';
-import { ChangeTypeDto } from './dto/change-type.dto.js';
+import { ChangeTaskTypeDto } from './dto/change-task-type.dto.js';
 import { MoveTaskDto } from './dto/move-task.dto.js';
-import { TaskDto } from './dto/task.dto.js';
+import { CreateTaskDto } from './dto/create-task.dto.js';
 import { UpdateTaskDto } from './dto/update-task.dto.js';
 import { Task } from './entities/task.entity.js';
-import { TaskService } from './task.service.js';
+import { TasksService } from './tasks.service.js';
 import { AnswerWithChanges } from '../realtime/dto/row-changes.dto.js';
 
 // Each route says the role it needs in the project (@ProjectAccess: viewers read, editors change;
@@ -36,8 +36,8 @@ import { AnswerWithChanges } from '../realtime/dto/row-changes.dto.js';
 @Controller('tasks')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
-export class TaskController {
-  constructor(private readonly taskService: TaskService) {}
+export class TasksController {
+  constructor(private readonly taskService: TasksService) {}
 
   /** Flat list for a project; the client builds the tree from parentId. */
   @Get()
@@ -50,7 +50,7 @@ export class TaskController {
   @ProjectAccess('editor', projectInBody())
   @AnswerWithChanges('Task', 201)
   @Broadcast({ entity: 'task', action: 'create', project: projectInBody() })
-  create(@Body() dto: TaskDto) {
+  create(@Body() dto: CreateTaskDto) {
     return this.taskService.create(dto);
   }
 
@@ -94,7 +94,7 @@ export class TaskController {
   @ProjectAccess('editor', projectOfRow(Task))
   @AnswerWithChanges('Task')
   @Broadcast({ entity: 'task', action: 'update', project: projectOfRow(Task) })
-  changeType(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ChangeTypeDto) {
+  changeType(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ChangeTaskTypeDto) {
     return this.taskService.changeType(id, dto.type);
   }
 }

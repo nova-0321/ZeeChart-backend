@@ -12,7 +12,7 @@ import { AuthService } from '../auth/auth.service.js';
 import { roleIn } from './membership.js';
 import { ProjectsService } from '../projects/projects.service.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
-import { AddMemberDto } from './dto/add-member.dto.js';
+import { CreateInvitationDto } from './dto/create-invitation.dto.js';
 import {
   asInvitationDto,
   type InvitationDto,
@@ -24,6 +24,7 @@ import { asMemberDto, type MemberDto } from './dto/member.dto.js';
 import { Invitation } from './entities/invitation.entity.js';
 import { Member } from './entities/member.entity.js';
 import type { MemberRole } from './member-role.js';
+import { notFound } from '../common/not-found.js';
 
 /** How long an invite link works. */
 export const INVITE_DAYS = 14;
@@ -71,7 +72,7 @@ export class MembersService {
   }
 
   /** Adds someone who has an account (found by email), as an editor unless told otherwise. */
-  async add(projectId: string, dto: AddMemberDto, addedById: string): Promise<MemberDto> {
+  async add(projectId: string, dto: CreateInvitationDto, addedById: string): Promise<MemberDto> {
     const user = await this.auth.findByEmail(dto.email);
     if (!user) throw new NotFoundException('No one has signed up with this email');
     const id = await this.db.transaction(async (manager) => {
@@ -143,7 +144,7 @@ export class MembersService {
    */
   async invite(
     projectId: string,
-    dto: AddMemberDto,
+    dto: CreateInvitationDto,
     invitedById: string,
   ): Promise<InviteResultDto> {
     const added = async (): Promise<InviteResultDto> => ({
@@ -206,7 +207,7 @@ export class MembersService {
 
   async cancelInvitation(id: string): Promise<void> {
     const { affected } = await this.invitationRepo.delete({ id });
-    if (!affected) throw new NotFoundException('Not found');
+    if (!affected) throw notFound('Invitation');
   }
 
   /**
@@ -227,7 +228,7 @@ export class MembersService {
       })
       .where('id = :id', { id })
       .execute();
-    if (!result.affected) throw new NotFoundException('Not found');
+    if (!result.affected) throw notFound('Invitation');
     return { token, invitation: await this.findInvitation(id) };
   }
 
@@ -323,13 +324,13 @@ export class MembersService {
       where: { id },
       relations: { invitedBy: true },
     });
-    if (!invitation) throw new NotFoundException('Not found');
+    if (!invitation) throw notFound('Invitation');
     return asInvitationDto(invitation);
   }
 
   private async findOne(id: string): Promise<MemberDto> {
     const member = await this.memberRepo.findOne({ where: { id }, relations: { user: true } });
-    if (!member) throw new NotFoundException('Not found');
+    if (!member) throw notFound('Member');
     return asMemberDto(member);
   }
 
@@ -339,11 +340,11 @@ export class MembersService {
    */
   private async lockedMember(manager: EntityManager, id: string) {
     const before = await manager.findOneBy(Member, { id });
-    if (!before) throw new NotFoundException('Not found');
+    if (!before) throw notFound('Member');
     await this.projects.lockForUpdate(manager, before.projectId);
     // Read again: another change may have finished while this one waited for the lock.
     const member = await manager.findOneBy(Member, { id });
-    if (!member) throw new NotFoundException('Not found');
+    if (!member) throw notFound('Member');
     return member;
   }
 }

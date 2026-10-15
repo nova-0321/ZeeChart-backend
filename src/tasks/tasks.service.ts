@@ -1,13 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { IsNull, type EntityManager } from 'typeorm';
 import { RequestTransaction } from '../database/request-transaction.js';
 import { rejectNulls } from '../common/reject-nulls.js';
 import { ProjectsService } from '../projects/projects.service.js';
-import { TaskDto } from './dto/task.dto.js';
+import { CreateTaskDto } from './dto/create-task.dto.js';
 import type { UpdateTaskDto } from './dto/update-task.dto.js';
 import { Task } from './entities/task.entity.js';
 import { groupLoop } from './group-loop.js';
 import { TaskScheduler } from './scheduling/task-scheduler.service.js';
+import { notFound } from '../common/not-found.js';
 
 /** The day ("YYYY-MM-DD") of a date as the API takes it: what is stored is its first ten characters. */
 const dayOf = (date: Date | string) =>
@@ -30,7 +31,7 @@ function numberedAs(level: Task[], task: Task) {
 }
 
 @Injectable()
-export class TaskService {
+export class TasksService {
   constructor(
     private readonly tx: RequestTransaction,
     private readonly scheduler: TaskScheduler,
@@ -112,13 +113,13 @@ export class TaskService {
     return this.saveInLevel(task, numberLevel);
   }
 
-  async create(dto: TaskDto) {
+  async create(dto: CreateTaskDto) {
     if (dayOf(dto.endDate) < dayOf(dto.startDate)) {
       throw new BadRequestException('The end date must not be before the start date');
     }
     // The foreign key would reject a missing project too, but only with a vague 409.
     if (!(await this.projects.exists(dto.projectId))) {
-      throw new NotFoundException('Project not found');
+      throw notFound('Project');
     }
     if (dto.parentId) {
       await this.assertValidParent(null, dto.projectId, dto.parentId);

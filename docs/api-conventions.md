@@ -15,6 +15,28 @@ Issue: #57.
 A `POST` that is an action, not a new thing, says so with `@HttpCode(200)`. `POST
 /invitations/:id/link` answers 201: it makes a new secret link (the old one stops working).
 
+### 404: "<Thing> not found"
+
+Every 404 says what was missing, never its id: `Task not found`, `Link not found`, `Version not
+found`... (#58). Write it with `notFound('Task')` from `src/common/not-found.ts`; a
+`findOneByOrFail` that finds nothing is answered the same way by the error filter, named from its
+entity. A row in a project you are not in gets exactly the answer a missing one gets (the route's
+thing, from its `@ProjectAccess` locator), so the two can't be told apart. A 404 with a reason of
+its own keeps it ("No one has signed up with this email", an invite link that expired). A test
+fails on a hand-written `'Not found'`, `'Resource not found'` or an id in the text, and on an
+entity `notFound` has no name for.
+
+## Naming
+
+- **Files are plural, after the resource:** `tasks/tasks.controller.ts`, `tasks.service.ts`,
+  `tasks.module.ts`, and so the classes: `TasksController`, `TasksService`, `TasksModule`. Helpers
+  about one row may stay singular (`task-rows.ts`, `task-project.ts`).
+- **DTOs:** `Create<Entity>Dto` for a `POST` that makes a row, `Update<Entity>Dto` for its `PATCH`
+  (`CreateTaskDto`, `UpdateMemberDto`, `UpdateVersionDto`); a verb only for an action that is not
+  a create or an update (`MoveTaskDto`, `ChangeTaskTypeDto`, `AcceptInviteDto`, `SignInDto`). An
+  answer's DTO is named for what it is (`MemberDto`, `UndoStateDto`). One file per input DTO,
+  named after it (`create-task.dto.ts`).
+
 ## One way to do one thing
 
 - **A project's own fields**, archived included, change with `PATCH /projects/:id` (owners). There

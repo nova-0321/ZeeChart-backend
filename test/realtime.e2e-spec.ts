@@ -21,7 +21,7 @@ import {
   type CursorMessage,
   type PresenceMessage,
 } from '../src/realtime/realtime.types.js';
-import { TaskService } from '../src/tasks/task.service.js';
+import { TasksService } from '../src/tasks/tasks.service.js';
 import { ConfiguredIoAdapter } from '../src/realtime/socket-io.adapter.js';
 import { createValidationPipe } from '../src/common/validation.js';
 
@@ -162,7 +162,7 @@ describe('Realtime (e2e)', () => {
     const unknown = '00000000-0000-4000-8000-000000000000';
     await expect(socket.emitWithAck('join', { projectId: unknown })).resolves.toEqual({
       ok: false,
-      error: `Project ${unknown} not found`,
+      error: 'Project not found',
     });
     expect(await inRoom(unknown)).toEqual([]);
   });
@@ -172,7 +172,7 @@ describe('Realtime (e2e)', () => {
     const stranger = await connect(undefined, (await someone('Stranger')).token);
     await expect(stranger.emitWithAck('join', { projectId: id })).resolves.toEqual({
       ok: false,
-      error: `Project ${id} not found`,
+      error: 'Project not found',
     });
     expect(await inRoom(id)).toEqual([]);
   });
@@ -401,7 +401,9 @@ describe('Realtime (e2e)', () => {
       const task = await newTask(projectId, senderId, 'Alpha');
       await settle();
       toOther.length = 0;
-      const spy = vi.spyOn(app.get(TaskService), 'update').mockRejectedValueOnce(new Error('boom'));
+      const spy = vi
+        .spyOn(app.get(TasksService), 'update')
+        .mockRejectedValueOnce(new Error('boom'));
       await http()
         .patch(`/tasks/${task.id}`)
         .set('X-Client-Id', senderId)

@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
-import { DependencyService } from './dependency.service.js';
+import { DependenciesService } from './dependencies.service.js';
 import { TaskDependency } from './entities/task-dependency.entity.js';
-import { TaskService } from '../tasks/task.service.js';
+import { TasksService } from '../tasks/tasks.service.js';
 
 const PROJECT = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
 const A = '0b1f1d6e-3c1a-4e0a-9d8b-5a5f6f7c8d90';
@@ -14,7 +14,7 @@ const task = (id: string, extra: object = {}) => ({
   ...extra,
 });
 
-describe('DependencyService.create', () => {
+describe('DependenciesService.create', () => {
   const query = { select: vi.fn(), where: vi.fn(), getRawMany: vi.fn() };
   const dependencyRepo = {
     create: vi.fn(),
@@ -26,7 +26,7 @@ describe('DependencyService.create', () => {
   const taskRepo = { findOneByOrFail: vi.fn(), findOneBy: vi.fn() };
   const scheduler = { rescheduleFrom: vi.fn(), assertSchedulable: vi.fn() };
   const tx = { repo: vi.fn(), run: vi.fn() };
-  let service: DependencyService;
+  let service: DependenciesService;
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -49,14 +49,14 @@ describe('DependencyService.create', () => {
     tx.repo.mockImplementation((entity: unknown) =>
       entity === TaskDependency ? dependencyRepo : taskRepo,
     );
-    // The real TaskService over the same task rows: the tasks are read, and the group tree walked,
+    // The real TasksService over the same task rows: the tasks are read, and the group tree walked,
     // there (#55).
-    const tasks = new TaskService(
+    const tasks = new TasksService(
       { repo: () => taskRepo } as never,
       scheduler as never,
       {} as never,
     );
-    service = new DependencyService(tx as never, scheduler as never, tasks);
+    service = new DependenciesService(tx as never, scheduler as never, tasks);
   });
 
   it('links two tasks of a project, finish to start unless told otherwise', async () => {
