@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ThrottleByEmail } from '../common/throttling.js';
 import { NoBroadcast } from '../realtime/broadcast.decorator.js';
 import { AuthGuard, type AuthedRequest } from './auth.guard.js';
@@ -11,6 +11,7 @@ import { SignUpDto } from './dto/sign-up.dto.js';
 
 // Signing out of one device has no endpoint: the token lives in the app, which forgets it. A token
 // stays valid until it expires (JWT_EXPIRES_IN), or until the account signs out everywhere.
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}

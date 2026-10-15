@@ -1,22 +1,23 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { EntityManager } from 'typeorm';
-import { RequestTransaction } from '../database/request-transaction.js';
-import type { MyProjectDto } from '../projects/dto/my-project.dto.js';
-import { roleIn } from '../members/membership.js';
-import { assertNameFree, ProjectsService } from '../projects/projects.service.js';
+import { RequestTransaction } from '../../database/request-transaction.js';
+import type { MyProjectDto } from '../../projects/dto/my-project.dto.js';
+import { roleIn } from '../../members/membership.js';
+import { assertNameFree, ProjectsService } from '../../projects/projects.service.js';
+import { MAX_PAGE, PAGE_SIZE } from '../history/dto/page-query.dto.js';
 import { asVersionDto, type VersionDto, type VersionSummaryDto } from './dto/version.dto.js';
-import { ProjectVersion, type VersionKind } from './entities/project-version.entity.js';
-import { KEEP_MANUAL_VERSIONS, MAX_STARRED_VERSIONS } from './history-limits.js';
-import type { Snapshot } from './revision-diff.js';
-import { loadSnapshot } from './revision-state.js';
+import { ProjectVersion, type VersionKind } from '../entities/project-version.entity.js';
+import { KEEP_MANUAL_VERSIONS, MAX_STARRED_VERSIONS } from '../history-limits.js';
+import type { Snapshot } from '../history/revision-diff.js';
+import { loadSnapshot } from '../revision-state.js';
 import { contentOf, sameContent, type VersionContent } from './version-content.js';
 // Each kind of row is written back by the domain that owns it (#55).
-import { deleteLinksOf, writeLink } from '../dependencies/link-rows.js';
-import { deleteEventsExcept, writeEvent } from '../events/event-rows.js';
-import { ownedNamesLike, ownerIdsOf } from '../members/membership.js';
-import { writeProjectFields } from '../projects/project-rows.js';
-import { deleteTasksExcept, setTaskParent, writeTask } from '../tasks/task-rows.js';
+import { deleteLinksOf, writeLink } from '../../dependencies/link-rows.js';
+import { deleteEventsExcept, writeEvent } from '../../events/event-rows.js';
+import { ownedNamesLike, ownerIdsOf } from '../../members/membership.js';
+import { writeProjectFields } from '../../projects/project-rows.js';
+import { deleteTasksExcept, setTaskParent, writeTask } from '../../tasks/task-rows.js';
 
 /** An auto version is saved after a change when the newest version is older than this. */
 export const AUTO_EVERY_MS = 10 * 60 * 1000;
@@ -40,9 +41,13 @@ export class VersionsService {
     return this.tx.repo(ProjectVersion);
   }
 
-  /** The project's versions, newest first, without their contents (but how much is in each). */
-  async list(projectId: string): Promise<VersionSummaryDto[]> {
-    const rows = await this.versionRepo
+  /**
+   * The project's versions, newest first, without their contents (but how much is in each): a page
+   * of `limit` (see PageQueryDto). `before`: the id of the last version of the previous page; the
+   * page goes on with the older ones (versions are numbered, so the number is the cursor).
+   */
+  async list(projectId: string, before?: string, limit = PAGE_SIZE): Promise<VersionSummaryDto[]> {
+    const query = this.versionRepo
       .createQueryBuilder('version')
       .leftJoin('version.createdBy', 'createdBy')
       .select([
@@ -58,17 +63,26 @@ export class VersionsService {
       ])
       .where('version.projectId = :projectId', { projectId })
       .orderBy('version.number', 'DESC')
-      .getRawMany<{
-        id: string;
-        number: number;
-        kind: VersionKind;
-        starred: boolean;
-        createdAt: Date;
-        createdById: string | null;
-        createdByName: string | null;
-        tasks: number;
-        events: number;
-      }>();
+      .limit(Math.min(Math.max(limit, 1), MAX_PAGE));
+    if (before) {
+      query.andWhere(
+        `version.number < (
+           SELECT cursor."number" FROM "project_versions" cursor
+            WHERE cursor."id" = :before AND cursor."projectId" = :projectId)`,
+        { before },
+      );
+    }
+    const rows = await query.getRawMany<{
+      id: string;
+      number: number;
+      kind: VersionKind;
+      starred: boolean;
+      createdAt: Date;
+      createdById: string | null;
+      createdByName: string | null;
+      tasks: number;
+      events: number;
+    }>();
     return rows.map((row) => ({
       id: row.id,
       number: row.number,

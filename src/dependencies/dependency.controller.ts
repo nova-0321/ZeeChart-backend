@@ -1,3 +1,4 @@
+import { IfMatch } from '../revisions/if-match.decorator.js';
 import {
   Body,
   Controller,
@@ -11,7 +12,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard.js';
 import {
   ProjectAccess,
@@ -28,6 +29,7 @@ import { projectOfTask } from '../tasks/task-project.js';
 
 // Each route says the role it needs in the project (@ProjectAccess: viewers read, editors change;
 // 404 for non-members) and each write who is told after it (@Broadcast: everyone with it open).
+@ApiTags('dependencies')
 @Controller('dependencies')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
@@ -56,6 +58,7 @@ export class DependencyController {
 
   /** Change the type and/or the lag of a link. */
   @Patch(':id')
+  @IfMatch()
   @ProjectAccess('editor', projectOfRow(TaskDependency))
   @Broadcast({ entity: 'dependency', action: 'update', project: projectOfRow(TaskDependency) })
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateDependencyDto) {
@@ -63,6 +66,7 @@ export class DependencyController {
   }
 
   @Delete(':id')
+  @IfMatch()
   @HttpCode(204)
   @ProjectAccess('editor', projectOfRow(TaskDependency))
   @Broadcast({ entity: 'dependency', action: 'delete', project: projectOfRow(TaskDependency) })

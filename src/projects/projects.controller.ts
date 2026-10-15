@@ -1,3 +1,4 @@
+import { IfMatch } from '../revisions/if-match.decorator.js';
 import {
   Body,
   Controller,
@@ -9,7 +10,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import { Broadcast, NoBroadcast } from '../realtime/broadcast.decorator.js';
@@ -28,6 +29,7 @@ import { ProjectsService } from './projects.service.js';
  * (404 for anyone else) and only its owners change it. Changes are told to everyone with the
  * project open (@Broadcast).
  */
+@ApiTags('projects')
 @Controller('projects')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
@@ -56,6 +58,7 @@ export class ProjectsController {
   }
 
   @Patch(':id')
+  @IfMatch()
   @ProjectAccess('owner', projectInParam())
   @Broadcast({ entity: 'project', action: 'update', project: projectInParam() })
   update(
@@ -67,6 +70,7 @@ export class ProjectsController {
   }
 
   @Patch(':id/archive')
+  @IfMatch()
   @ProjectAccess('owner', projectInParam())
   @Broadcast({ entity: 'project', action: 'update', project: projectInParam() })
   archive(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() userId: string) {
@@ -74,6 +78,7 @@ export class ProjectsController {
   }
 
   @Patch(':id/reopen')
+  @IfMatch()
   @ProjectAccess('owner', projectInParam())
   @Broadcast({ entity: 'project', action: 'update', project: projectInParam() })
   reopen(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() userId: string) {
@@ -82,6 +87,7 @@ export class ProjectsController {
 
   // Tells whoever has it open, so they can move off it.
   @Delete(':id')
+  @IfMatch()
   @ProjectAccess('owner', projectInParam())
   @Broadcast({ entity: 'project', action: 'delete', project: projectInParam() })
   remove(@Param('id', ParseUUIDPipe) id: string) {

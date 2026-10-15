@@ -1,27 +1,6 @@
 {
   "openapi": "3.0.0",
   "paths": {
-    "/": {
-      "get": {
-        "operationId": "App_getHello",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "App"
-        ]
-      }
-    },
     "/auth/signup": {
       "post": {
         "operationId": "Auth_signUp",
@@ -50,7 +29,7 @@
         },
         "summary": "Make an account and sign in. 409 when the email already has one.",
         "tags": [
-          "Auth"
+          "auth"
         ]
       }
     },
@@ -82,7 +61,7 @@
         },
         "summary": "Sign in. 401 for a wrong email or password (the same message for both).",
         "tags": [
-          "Auth"
+          "auth"
         ]
       }
     },
@@ -102,7 +81,7 @@
         ],
         "summary": "Sign out of every device: all tokens made so far stop working (this one too), and the account's\nopen live connections are closed. 204. Signing in again makes a new token.",
         "tags": [
-          "Auth"
+          "auth"
         ]
       }
     },
@@ -129,7 +108,7 @@
         ],
         "summary": "The signed-in user. 401 without a valid token, or when the account no longer exists.",
         "tags": [
-          "Auth"
+          "auth"
         ]
       }
     },
@@ -189,7 +168,7 @@
         ],
         "summary": "The events of a project, earliest first.",
         "tags": [
-          "Events"
+          "events"
         ]
       },
       "post": {
@@ -223,7 +202,7 @@
           }
         ],
         "tags": [
-          "Events"
+          "events"
         ]
       }
     },
@@ -235,6 +214,15 @@
             "name": "id",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -260,6 +248,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Someone else changed the same fields since that version: nothing was saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -269,7 +267,7 @@
         ],
         "summary": "Change any of name, color and dates.",
         "tags": [
-          "Events"
+          "events"
         ]
       },
       "delete": {
@@ -282,11 +280,30 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": ""
+          },
+          "409": {
+            "description": "Someone else changed the same fields since that version: nothing was saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -295,7 +312,7 @@
           }
         ],
         "tags": [
-          "Events"
+          "events"
         ]
       }
     },
@@ -332,7 +349,7 @@
         ],
         "summary": "A new project; you are its first owner. No one has it open yet, so no one is told.",
         "tags": [
-          "Projects"
+          "projects"
         ]
       },
       "get": {
@@ -360,7 +377,7 @@
         ],
         "summary": "The projects you are a member of, newest first.",
         "tags": [
-          "Projects"
+          "projects"
         ]
       }
     },
@@ -395,7 +412,7 @@
           }
         ],
         "tags": [
-          "Projects"
+          "projects"
         ]
       },
       "patch": {
@@ -405,6 +422,15 @@
             "name": "id",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -430,6 +456,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Someone else changed the same fields since that version: nothing was saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -438,7 +474,7 @@
           }
         ],
         "tags": [
-          "Projects"
+          "projects"
         ]
       },
       "delete": {
@@ -451,11 +487,30 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": ""
+          },
+          "409": {
+            "description": "Someone else changed the same fields since that version: nothing was saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -464,7 +519,7 @@
           }
         ],
         "tags": [
-          "Projects"
+          "projects"
         ]
       }
     },
@@ -479,38 +534,12 @@
             "schema": {
               "type": "string"
             }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MyProjectDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
+          },
           {
-            "bearer": []
-          }
-        ],
-        "tags": [
-          "Projects"
-        ]
-      }
-    },
-    "/projects/{id}/reopen": {
-      "patch": {
-        "operationId": "Projects_reopen",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -526,6 +555,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Someone else changed the same fields since that version: nothing was saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -534,7 +573,61 @@
           }
         ],
         "tags": [
-          "Projects"
+          "projects"
+        ]
+      }
+    },
+    "/projects/{id}/reopen": {
+      "patch": {
+        "operationId": "Projects_reopen",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyProjectDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Someone else changed the same fields since that version: nothing was saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "projects"
         ]
       }
     },
@@ -573,7 +666,7 @@
         ],
         "summary": "The project's members and their roles, in the order they joined.",
         "tags": [
-          "ProjectMembers"
+          "members"
         ]
       }
     },
@@ -619,7 +712,7 @@
         ],
         "summary": "Change a member's role. 409 for the project's last owner.",
         "tags": [
-          "Members"
+          "members"
         ]
       },
       "delete": {
@@ -646,7 +739,7 @@
         ],
         "summary": "Remove a member from the project: an owner may remove anyone, and anyone may leave (remove\nthemselves). 409 for the project's last owner.",
         "tags": [
-          "Members"
+          "members"
         ]
       }
     },
@@ -685,7 +778,7 @@
         ],
         "summary": "The project's pending invitations, oldest first.",
         "tags": [
-          "ProjectInvitations"
+          "invitations"
         ]
       },
       "post": {
@@ -729,7 +822,7 @@
         ],
         "summary": "Invite someone by email: added as a member at once when they have an account (`added`),\notherwise kept as an invitation until they sign up with it (`invited`). 409 when they are\nalready a member, or already invited.",
         "tags": [
-          "ProjectInvitations"
+          "invitations"
         ]
       }
     },
@@ -758,7 +851,7 @@
         ],
         "summary": "Cancel a pending invitation (owners).",
         "tags": [
-          "Invitations"
+          "invitations"
         ]
       }
     },
@@ -794,7 +887,7 @@
         ],
         "summary": "A new secret link for a pending invitation, for another INVITE_DAYS days (owners). The old link\nstops working. Only the new link's secret is answered, this once.",
         "tags": [
-          "Invitations"
+          "invitations"
         ]
       }
     },
@@ -826,7 +919,7 @@
         },
         "summary": "What a link is for (the project's name, who invited, the role): 404 when unknown or expired.\nA POST with the secret in the body, so it stays out of URLs (logs, history).",
         "tags": [
-          "InviteLinks"
+          "invitations"
         ]
       }
     },
@@ -863,7 +956,7 @@
         ],
         "summary": "Join with a link, signed in: a member with its role; the link is used up.",
         "tags": [
-          "InviteLinks"
+          "invitations"
         ]
       }
     },
@@ -902,7 +995,7 @@
         ],
         "summary": "Flat list for a project; the client builds the tree from parentId.",
         "tags": [
-          "Task"
+          "tasks"
         ]
       },
       "post": {
@@ -936,7 +1029,7 @@
           }
         ],
         "tags": [
-          "Task"
+          "tasks"
         ]
       }
     },
@@ -948,6 +1041,15 @@
             "name": "id",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -973,6 +1075,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Someone else changed the same fields since that version: nothing was saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -982,7 +1094,7 @@
         ],
         "summary": "Change any of name, description, dates, progress, priority and color.",
         "tags": [
-          "Task"
+          "tasks"
         ]
       },
       "delete": {
@@ -995,11 +1107,30 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": ""
+          },
+          "409": {
+            "description": "Someone else changed the same fields since that version: nothing was saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1009,7 +1140,7 @@
         ],
         "summary": "Sub-tasks of a deleted group are kept and become top-level.",
         "tags": [
-          "Task"
+          "tasks"
         ]
       }
     },
@@ -1021,6 +1152,15 @@
             "name": "id",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1046,6 +1186,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Someone else changed the same fields since that version: nothing was saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1055,7 +1205,7 @@
         ],
         "summary": "Move a task under a group, or send { \"parentId\": null } to make it top-level.",
         "tags": [
-          "Task"
+          "tasks"
         ]
       }
     },
@@ -1067,6 +1217,15 @@
             "name": "id",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1092,6 +1251,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Someone else changed the same fields since that version: nothing was saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1101,7 +1270,7 @@
         ],
         "summary": "Put a task at a place in the list: under a group (or at the top level, with null) and at an\nindex among the tasks there. The tasks of that level are numbered again to keep that order.",
         "tags": [
-          "Task"
+          "tasks"
         ]
       }
     },
@@ -1113,6 +1282,15 @@
             "name": "id",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1138,6 +1316,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Someone else changed the same fields since that version: nothing was saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1146,7 +1334,7 @@
           }
         ],
         "tags": [
-          "Task"
+          "tasks"
         ]
       }
     },
@@ -1185,7 +1373,7 @@
         ],
         "summary": "Every link between the tasks of a project.",
         "tags": [
-          "Dependency"
+          "dependencies"
         ]
       },
       "post": {
@@ -1220,7 +1408,7 @@
         ],
         "summary": "Make `toTaskId` come after `fromTaskId`. Rejects self links, duplicates and cycles; moves the successor later if it is too early.",
         "tags": [
-          "Dependency"
+          "dependencies"
         ]
       }
     },
@@ -1232,6 +1420,15 @@
             "name": "id",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1257,6 +1454,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Someone else changed the same fields since that version: nothing was saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1266,7 +1473,7 @@
         ],
         "summary": "Change the type and/or the lag of a link.",
         "tags": [
-          "Dependency"
+          "dependencies"
         ]
       },
       "delete": {
@@ -1279,11 +1486,30 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "204": {
             "description": ""
+          },
+          "409": {
+            "description": "Someone else changed the same fields since that version: nothing was saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictErrorDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1292,7 +1518,7 @@
           }
         ],
         "tags": [
-          "Dependency"
+          "dependencies"
         ]
       }
     },
@@ -1312,7 +1538,7 @@
             "name": "before",
             "required": false,
             "in": "query",
-            "description": "The id of the last revision of the previous page: the next page goes on after it.",
+            "description": "The id of the last item of the previous page: the next page goes on after it.",
             "schema": {
               "format": "uuid",
               "type": "string"
@@ -1352,7 +1578,7 @@
         ],
         "summary": "The project's history, newest first, 50 at a time (up to 100 with `limit`). For the next page,\npass the id of the last one as `before`.",
         "tags": [
-          "ProjectRevisions"
+          "revisions"
         ]
       }
     },
@@ -1388,7 +1614,113 @@
         ],
         "summary": "Put a task, an event or the project back the way it was right after this revision (a deleted\none comes back, with its links where the other task is still there). It is recorded as a new\nchange (\"Restored to version N\"). 400 when it can't be put back as things are now.",
         "tags": [
-          "Revisions"
+          "revisions"
+        ]
+      }
+    },
+    "/projects/{id}/undo": {
+      "get": {
+        "operationId": "Undo_state",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoStateDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "What Undo and Redo would do now (null: nothing), for the buttons.",
+        "tags": [
+          "undo"
+        ]
+      },
+      "post": {
+        "operationId": "Undo_undo",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoStepDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Undo your last change here (from any tab or device). 409 when there is none, or when someone\nchanged what it changed since (nothing is overwritten).",
+        "tags": [
+          "undo"
+        ]
+      }
+    },
+    "/projects/{id}/redo": {
+      "post": {
+        "operationId": "Undo_redo",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoStepDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Redo what your last undo reverted. 409 when there is none, or it no longer fits.",
+        "tags": [
+          "undo"
         ]
       }
     },
@@ -1402,6 +1734,27 @@
             "in": "path",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "required": false,
+            "in": "query",
+            "description": "The id of the last item of the previous page: the next page goes on after it.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "How many: 50 when left out, at most 100.",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "number"
             }
           }
         ],
@@ -1425,9 +1778,9 @@
             "bearer": []
           }
         ],
-        "summary": "The project's versions, newest first (without their contents).",
+        "summary": "The project's versions, newest first (without their contents), 50 at a time (up to 100 with\n`limit`). For the next page, pass the id of the last one as `before`.",
         "tags": [
-          "ProjectVersions"
+          "versions"
         ]
       },
       "post": {
@@ -1471,7 +1824,7 @@
         ],
         "summary": "\"Save a version now\": the project as it is.",
         "tags": [
-          "ProjectVersions"
+          "versions"
         ]
       }
     },
@@ -1507,7 +1860,7 @@
         ],
         "summary": "One version with its contents (to look at it).",
         "tags": [
-          "Versions"
+          "versions"
         ]
       },
       "patch": {
@@ -1551,7 +1904,7 @@
         ],
         "summary": "Star a version (or take the star off).",
         "tags": [
-          "Versions"
+          "versions"
         ]
       }
     },
@@ -1587,7 +1940,7 @@
         ],
         "summary": "A new project of yours made from this version (named \"<name> (v3)\"); this one is not touched.\nAny member may: they can see the version already, and the copy is theirs.",
         "tags": [
-          "Versions"
+          "versions"
         ]
       }
     },
@@ -1623,113 +1976,7 @@
         ],
         "summary": "Put the whole project back as it was in this version (tasks, events, links; the name and\ndescription too for an owner). The state it replaces is kept as a version first; newer\nversions go, except starred and manually saved ones.",
         "tags": [
-          "Versions"
-        ]
-      }
-    },
-    "/projects/{id}/undo": {
-      "get": {
-        "operationId": "Undo_state",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UndoStateDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "What Undo and Redo would do now (null: nothing), for the buttons.",
-        "tags": [
-          "Undo"
-        ]
-      },
-      "post": {
-        "operationId": "Undo_undo",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UndoStepDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Undo your last change here (from any tab or device). 409 when there is none, or when someone\nchanged what it changed since (nothing is overwritten).",
-        "tags": [
-          "Undo"
-        ]
-      }
-    },
-    "/projects/{id}/redo": {
-      "post": {
-        "operationId": "Undo_redo",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UndoStepDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Redo what your last undo reverted. 409 when there is none, or it no longer fits.",
-        "tags": [
-          "Undo"
+          "versions"
         ]
       }
     }
@@ -2214,6 +2461,114 @@
           }
         }
       },
+      "ConflictAuthorDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "ConflictDetailsDto": {
+        "type": "object",
+        "properties": {
+          "conflict": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "current": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "description": "The row as it is now; null when it was deleted."
+          },
+          "fields": {
+            "description": "The fields someone else changed since the version the write was made from.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "changedBy": {
+            "nullable": true,
+            "description": "Who changed them; null when that account is gone.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ConflictAuthorDto"
+              }
+            ]
+          },
+          "version": {
+            "type": "number",
+            "nullable": true,
+            "description": "Its version now: send it as `If-Match` to save over it."
+          }
+        },
+        "required": [
+          "conflict",
+          "current",
+          "fields",
+          "changedBy",
+          "version"
+        ]
+      },
+      "ConflictErrorDto": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "The status's name in capitals: \"BAD_REQUEST\", \"NOT_FOUND\", \"CONFLICT\"...",
+            "example": "NOT_FOUND"
+          },
+          "message": {
+            "description": "What went wrong, for a person; a list for invalid input (one line per field).",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "details": {
+            "$ref": "#/components/schemas/ConflictDetailsDto"
+          },
+          "statusCode": {
+            "type": "number",
+            "description": "The HTTP status, again."
+          },
+          "path": {
+            "type": "string",
+            "description": "The path that was called."
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "When it happened (ISO 8601)."
+          }
+        },
+        "required": [
+          "error",
+          "message",
+          "details",
+          "statusCode",
+          "path",
+          "timestamp"
+        ]
+      },
       "CreateProjectDto": {
         "type": "object",
         "properties": {
@@ -2223,7 +2578,8 @@
             "maxLength": 255
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 5000
           }
         },
         "required": [
@@ -2323,7 +2679,8 @@
             "maxLength": 255
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 5000
           },
           "archived": {
             "type": "boolean"
@@ -2588,7 +2945,8 @@
             "maxLength": 255
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 5000
           },
           "type": {
             "type": "string",
@@ -2662,7 +3020,8 @@
             "maxLength": 255
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 5000
           },
           "startDate": {
             "format": "date-time",
@@ -2996,6 +3355,48 @@
           "skipped"
         ]
       },
+      "UndoStepDto": {
+        "type": "object",
+        "properties": {
+          "batchId": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "batchId",
+          "summary"
+        ]
+      },
+      "UndoStateDto": {
+        "type": "object",
+        "properties": {
+          "undo": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UndoStepDto"
+              }
+            ]
+          },
+          "redo": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UndoStepDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "undo",
+          "redo"
+        ]
+      },
       "VersionKind": {
         "type": "string",
         "enum": [
@@ -3142,48 +3543,6 @@
         "required": [
           "version",
           "savedAs"
-        ]
-      },
-      "UndoStepDto": {
-        "type": "object",
-        "properties": {
-          "batchId": {
-            "type": "string"
-          },
-          "summary": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "batchId",
-          "summary"
-        ]
-      },
-      "UndoStateDto": {
-        "type": "object",
-        "properties": {
-          "undo": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/UndoStepDto"
-              }
-            ]
-          },
-          "redo": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/UndoStepDto"
-              }
-            ]
-          }
-        },
-        "required": [
-          "undo",
-          "redo"
         ]
       }
     }

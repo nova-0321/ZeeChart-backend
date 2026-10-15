@@ -44,7 +44,7 @@ export class Task {
   @Column({ type: 'date', default: () => 'CURRENT_DATE' })
   endDate: Date;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
   @Column({ type: 'text', nullable: false })
@@ -61,7 +61,7 @@ export class Task {
   @Column({ type: 'int', default: 0 })
   version: number;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 
   @Column({ type: 'uuid', nullable: true })

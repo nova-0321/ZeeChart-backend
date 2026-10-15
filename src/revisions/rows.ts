@@ -3,7 +3,7 @@ import { linkRows } from '../dependencies/link-rows.js';
 import { eventRows } from '../events/event-rows.js';
 import { projectRows } from '../projects/project-rows.js';
 import { taskRows } from '../tasks/task-rows.js';
-import type { RevisionEntity } from './revision-diff.js';
+import type { RevisionEntity } from './history/revision-diff.js';
 
 /**
  * The rows the history follows, by kind: each kind's own domain reads and sets their versions and

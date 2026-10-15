@@ -38,7 +38,7 @@ export class ProjectEvent {
   @Column({ type: 'uuid', nullable: false })
   projectId: string;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
   /**
@@ -49,7 +49,7 @@ export class ProjectEvent {
   @Column({ type: 'int', default: 0 })
   version: number;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 
   // An event belongs to a project and goes with it (ON DELETE CASCADE in the database).

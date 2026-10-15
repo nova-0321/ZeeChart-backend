@@ -242,4 +242,36 @@ describe('Versions (e2e)', () => {
       .send({ starred: 'yes' })
       .expect(400);
   });
+
+  it('the list comes 50 at a time, newest first; `before` gives the next page (#59)', async () => {
+    const { owner, projectId } = await setUp();
+    const task = await newTask(owner, projectId, { name: 'Draft 0' });
+    // A version saved by hand after each change: 55 of them, besides v1 and v2.
+    for (let n = 1; n <= 55; n++) {
+      await as(owner, http().patch(`/tasks/${task.id}`))
+        .send({ name: `Draft ${n}` })
+        .expect(200);
+      await as(owner, http().post(`/projects/${projectId}/versions`)).expect(201);
+    }
+    const page = async (query: string) =>
+      (await as(owner, http().get(`/projects/${projectId}/versions?${query}`)).expect(200))
+        .body as VersionSummary[];
+
+    const first = await versions(owner, projectId);
+    expect(first).toHaveLength(50);
+    const numbers = first.map((v) => v.number);
+    expect(numbers).toEqual([...numbers].sort((a, b) => b - a));
+    // The next page goes on with the older ones: the two pages are the whole list (with the oldest
+    // manual ones pruned, numbers skip), in order, nothing twice.
+    const second = await page(`before=${first.at(-1)!.id}`);
+    const all = await page('limit=100');
+    expect([...first, ...second]).toEqual(all);
+    expect(second.at(-1)!.number).toBe(1);
+
+    const two = await page('limit=2');
+    expect(two.map((v) => v.number)).toEqual(numbers.slice(0, 2));
+    expect(await page(`before=${second.at(-1)!.id}`)).toEqual([]);
+    await as(owner, http().get(`/projects/${projectId}/versions?limit=101`)).expect(400);
+    await as(owner, http().get(`/projects/${projectId}/versions?before=nope`)).expect(400);
+  });
 });

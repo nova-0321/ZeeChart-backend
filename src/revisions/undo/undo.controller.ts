@@ -1,16 +1,21 @@
 import { Controller, Get, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
-import { AuthGuard } from '../auth/auth.guard.js';
-import { CurrentUser } from '../auth/current-user.decorator.js';
-import { ProjectAccess, ProjectAccessGuard, projectInParam } from '../projects/project-access.js';
-import { Broadcast } from '../realtime/broadcast.decorator.js';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { AuthGuard } from '../../auth/auth.guard.js';
+import { CurrentUser } from '../../auth/current-user.decorator.js';
+import {
+  ProjectAccess,
+  ProjectAccessGuard,
+  projectInParam,
+} from '../../projects/project-access.js';
+import { Broadcast } from '../../realtime/broadcast.decorator.js';
 import { UndoStateDto, UndoStepDto } from './dto/undo.dto.js';
-import type { RevisionRequest } from './revision.interceptor.js';
+import type { RevisionRequest } from '../revision.interceptor.js';
 import { UndoService } from './undo.service.js';
 
 // Undo and redo of your own changes in a project (see UndoService). Viewers make no changes, so
 // they have nothing to undo; editors and owners do.
 
+@ApiTags('undo')
 @Controller('projects/:id')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()

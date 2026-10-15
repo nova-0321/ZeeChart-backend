@@ -5,11 +5,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
-import { RequestTransaction } from '../database/request-transaction.js';
-import { roleIn } from '../members/membership.js';
-import { TaskScheduler } from '../tasks/scheduling/task-scheduler.service.js';
+import { RequestTransaction } from '../../database/request-transaction.js';
+import { roleIn } from '../../members/membership.js';
+import { TaskScheduler } from '../../tasks/scheduling/task-scheduler.service.js';
 import type { UndoStepDto as UndoStep } from './dto/undo.dto.js';
-import { type BatchKind, Revision } from './entities/revision.entity.js';
+import { type BatchKind, Revision } from '../entities/revision.entity.js';
 import {
   EVENT_FIELDS,
   type EventState,
@@ -20,15 +20,15 @@ import {
   type Snapshot,
   TASK_FIELDS,
   type TaskState,
-} from './revision-diff.js';
-import { loadSnapshot } from './revision-state.js';
-import { UNDO_DEPTH } from './history-limits.js';
-import { ROWS } from './rows.js';
+} from '../history/revision-diff.js';
+import { loadSnapshot } from '../revision-state.js';
+import { UNDO_DEPTH } from '../history-limits.js';
+import { ROWS } from '../rows.js';
 // Each kind of row is written back by the domain that owns it (#55).
-import { writeLink } from '../dependencies/link-rows.js';
-import { writeEvent } from '../events/event-rows.js';
-import { ownersOwnProjectNamed } from '../members/membership.js';
-import { writeProjectRow } from '../projects/project-rows.js';
+import { writeLink } from '../../dependencies/link-rows.js';
+import { writeEvent } from '../../events/event-rows.js';
+import { ownersOwnProjectNamed } from '../../members/membership.js';
+import { writeProjectRow } from '../../projects/project-rows.js';
 import {
   parentIdOf,
   putAtPlace,
@@ -36,7 +36,7 @@ import {
   setTaskParent,
   taskTreeOf,
   writeTask,
-} from '../tasks/task-rows.js';
+} from '../../tasks/task-rows.js';
 
 /**
  * Undo and redo of one person's own changes in a project, whatever tab or device they made them

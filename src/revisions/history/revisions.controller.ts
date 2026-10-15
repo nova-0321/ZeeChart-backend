@@ -1,23 +1,25 @@
 import { Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
-import { AuthGuard } from '../auth/auth.guard.js';
-import { CurrentUser } from '../auth/current-user.decorator.js';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { AuthGuard } from '../../auth/auth.guard.js';
+import { CurrentUser } from '../../auth/current-user.decorator.js';
 import {
   ProjectAccess,
   ProjectAccessGuard,
   projectInParam,
   projectOfRow,
-} from '../projects/project-access.js';
-import { Broadcast } from '../realtime/broadcast.decorator.js';
+} from '../../projects/project-access.js';
+import { Broadcast } from '../../realtime/broadcast.decorator.js';
 import type { RestoreResultDto } from './dto/restore-result.dto.js';
-import { RevisionsQueryDto } from './dto/revisions-query.dto.js';
-import { Revision } from './entities/revision.entity.js';
-import type { RevisionRequest } from './revision.interceptor.js';
+import { PageQueryDto } from './dto/page-query.dto.js';
+import { Revision } from '../entities/revision.entity.js';
+import type { RevisionRequest } from '../revision.interceptor.js';
+import { RestoreService } from './restore.service.js';
 import { RevisionsService } from './revisions.service.js';
 
 // Every member reads the history; editors restore tasks and events from it, owners also the
 // project itself.
 
+@ApiTags('revisions')
 @Controller('projects/:id/revisions')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
@@ -30,16 +32,17 @@ export class ProjectRevisionsController {
    */
   @Get()
   @ProjectAccess('viewer', projectInParam())
-  list(@Param('id', ParseUUIDPipe) projectId: string, @Query() query: RevisionsQueryDto) {
+  list(@Param('id', ParseUUIDPipe) projectId: string, @Query() query: PageQueryDto) {
     return this.revisions.list(projectId, query.before, query.limit);
   }
 }
 
+@ApiTags('revisions')
 @Controller('revisions')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
 export class RevisionsController {
-  constructor(private readonly revisions: RevisionsService) {}
+  constructor(private readonly restorer: RestoreService) {}
 
   /**
    * Put a task, an event or the project back the way it was right after this revision (a deleted
@@ -54,7 +57,7 @@ export class RevisionsController {
     @CurrentUser() userId: string,
     @Req() request: RevisionRequest,
   ): Promise<RestoreResultDto> {
-    const result = await this.revisions.restore(id, userId);
+    const result = await this.restorer.restore(id, userId);
     // For the history of this restore (RevisionInterceptor).
     request.revisionTarget = result.entityId;
     request.revisionNote = `Restored to version ${result.version}`;

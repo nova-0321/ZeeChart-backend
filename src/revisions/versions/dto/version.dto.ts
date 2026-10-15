@@ -4,9 +4,9 @@ import {
   type ProjectVersion,
   VERSION_KINDS,
   type VersionKind,
-} from '../entities/project-version.entity.js';
+} from '../../entities/project-version.entity.js';
 import type { VersionContent } from '../version-content.js';
-import { RevisionAuthorDto } from './revision.dto.js';
+import { RevisionAuthorDto } from '../../history/dto/revision.dto.js';
 
 /** A version in the list: what it is and how much is in it, not the contents themselves. */
 export class VersionSummaryDto {

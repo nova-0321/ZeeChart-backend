@@ -136,6 +136,36 @@ describe('Fixes (e2e)', () => {
     expect(copy.name).toMatch(/ \(v\d+\)$/);
   });
 
+  it('descriptions: up to 5000 characters, for projects and tasks, made or changed (#59)', async () => {
+    const { owner, projectId } = await setUp();
+    const [fits, tooLong] = ['d'.repeat(5000), 'd'.repeat(5001)];
+    const projectWith = (description: string) =>
+      as(owner, http().post('/projects')).send({ name: `zzfix ${randomUUID()}`, description });
+    await projectWith(fits).expect(201);
+    await projectWith(tooLong).expect(400);
+    await as(owner, http().patch(`/projects/${projectId}`))
+      .send({ description: tooLong })
+      .expect(400);
+
+    const taskWith = (description: string) =>
+      as(owner, http().post('/tasks')).send({
+        projectId,
+        name: 'Notes',
+        color: '#2a78d6',
+        startDate: '2026-11-02',
+        endDate: '2026-11-06',
+        description,
+      });
+    const task = (await taskWith(fits).expect(201)).body as { id: string };
+    await taskWith(tooLong).expect(400);
+    await as(owner, http().patch(`/tasks/${task.id}`))
+      .send({ description: tooLong })
+      .expect(400);
+    await as(owner, http().patch(`/tasks/${task.id}`))
+      .send({ description: fits })
+      .expect(200);
+  });
+
   it('a new project has nothing to undo (making it is not undone)', async () => {
     const { owner, projectId } = await setUp();
     expect((await as(owner, http().get(`/projects/${projectId}/undo`)).expect(200)).body).toEqual({

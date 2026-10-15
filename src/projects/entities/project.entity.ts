@@ -32,7 +32,7 @@ export class Project {
   @OneToMany(() => Member, (member) => member.project)
   members: Member[];
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
   /**
@@ -43,6 +43,6 @@ export class Project {
   @Column({ type: 'int', default: 0 })
   version: number;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }

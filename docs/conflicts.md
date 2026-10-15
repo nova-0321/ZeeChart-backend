@@ -1,7 +1,7 @@
 # Conflicts: two people editing the same thing
 
 Two people can change the same task at once. Without a check, the last save wins and the other
-change is lost without anyone knowing. Issue: #21. Source: `src/revisions/conflicts.ts`.
+change is lost without anyone knowing. Issue: #21. Source: `src/revisions/history/conflicts.ts`.
 
 ## Versions
 
@@ -47,7 +47,7 @@ The `409` says who and what, and carries the row as it is now:
 ```json
 {
   "statusCode": 409,
-  "error": "Conflict",
+  "error": "CONFLICT",
   "message": "Bob changed the dates of “Design” meanwhile. Your change wasn't saved",
   "details": {
     "conflict": true,
@@ -55,9 +55,13 @@ The `409` says who and what, and carries the row as it is now:
     "changedBy": { "id": "…", "name": "Bob" },
     "current": { "id": "…", "name": "Design", "startDate": "2026-11-20", "…": "…" },
     "version": 7
-  }
+  },
+  "path": "/tasks/…",
+  "timestamp": "2026-11-20T09:30:00.000Z"
 }
 ```
+
+Every error has this shape (`src/common/all-exceptions.filter.ts`): `error` is the status's name in capitals (`CONFLICT`, `NOT_FOUND`, `UNAUTHORIZED`…), and `details` is there only when there is more to say, as here.
 
 To keep your change anyway, send it again with `If-Match: 7` (the `version` in `details`).
 

@@ -11,6 +11,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { DESCRIPTION_MAX_LENGTH } from '../../common/text-limits.js';
 import { IsDay } from '../../common/is-day.js';
 import {
   TASK_PRIORITIES,
@@ -29,6 +30,7 @@ export class TaskDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(DESCRIPTION_MAX_LENGTH)
   description?: string;
 
   /** Defaults to "task". */

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import type { Revision } from '../entities/revision.entity.js';
+import type { Revision } from '../../entities/revision.entity.js';
 import {
   REVISION_ACTIONS,
   REVISION_ENTITIES,
