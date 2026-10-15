@@ -7,7 +7,7 @@ import { AppModule } from '../src/app.module.js';
 import { createValidationPipe } from '../src/common/validation.js';
 import { RevisionsService } from '../src/revisions/revisions.service.js';
 import { VersionsService } from '../src/revisions/versions.service.js';
-import { TaskScheduler } from '../src/scheduling/task-scheduler.service.js';
+import { TaskScheduler } from '../src/tasks/scheduling/task-scheduler.service.js';
 import { TaskService } from '../src/tasks/task.service.js';
 import { deleteTestAccounts } from './cleanup.js';
 

@@ -4,11 +4,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module.js';
 import { DatabaseModule } from '../database/database.module.js';
 import { DependenciesModule } from '../dependencies/dependencies.module.js';
-import { ProjectEvent } from '../events/entities/project-event.entity.js';
 import { EventsModule } from '../events/events.module.js';
 import { ProjectsModule } from '../projects/projects.module.js';
-import { SchedulingModule } from '../scheduling/scheduling.module.js';
-import { Task } from '../tasks/entities/task.entity.js';
+import { SchedulingModule } from '../tasks/scheduling/scheduling.module.js';
 import { TaskModule } from '../tasks/task.module.js';
 import { ProjectVersion } from './entities/project-version.entity.js';
 import { Revision } from './entities/revision.entity.js';
@@ -27,7 +25,7 @@ import { UndoService } from './undo.service.js';
     AuthModule,
     // RequestTransaction and ProjectWriteLock, for the interceptor.
     DatabaseModule,
-    TypeOrmModule.forFeature([Revision, ProjectVersion, Task, ProjectEvent]),
+    TypeOrmModule.forFeature([Revision, ProjectVersion]),
     // A restore goes through the same services as any change.
     TaskModule,
     EventsModule,

@@ -13,9 +13,9 @@ import {
 import { isUUID } from 'class-validator';
 import type { Server, Socket } from 'socket.io';
 import { DataSource } from 'typeorm';
+import { AuthService } from '../auth/auth.service.js';
 import { isCurrentToken, SessionEvents, type TokenPayload } from '../auth/token.js';
-import { User } from '../auth/entities/user.entity.js';
-import { roleIn } from '../projects/project-access.js';
+import { roleIn } from '../members/membership.js';
 import {
   clientRoom,
   isProjectRoom,
@@ -129,6 +129,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly jwt: JwtService,
     private readonly db: DataSource,
     private readonly sessions: SessionEvents,
+    private readonly auth: AuthService,
   ) {}
 
   /**
@@ -309,9 +310,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
     // The name others see in the presence list. A deleted account is refused, as by the API, and so
     // is a token made before the account signed out everywhere.
-    const user = await this.db
-      .getRepository(User)
-      .findOne({ select: { name: true, tokenVersion: true }, where: { id: payload.sub } });
+    const user = await this.auth.sessionOf(payload.sub);
     if (!user || !isCurrentToken(payload, user.tokenVersion)) {
       throw new Error('Your session has ended. Sign in again');
     }

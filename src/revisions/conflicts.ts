@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { Request } from 'express';
 import type { EntityManager } from 'typeorm';
+import { accountNameOf } from '../auth/accounts.js';
 import type { RealtimeEntity } from '../realtime/realtime.types.js';
 import {
   EVENT_FIELDS,
@@ -10,7 +11,7 @@ import {
   type Snapshot,
   TASK_FIELDS,
 } from './revision-diff.js';
-import { TABLES } from './revisions.service.js';
+import { ROWS } from './rows.js';
 
 // Conflict checks (#21; see docs/conflicts.md). A write may say which version of the row it was
 // made from (`If-Match: <version>`). It is refused (409) only when someone else changed, since that
@@ -113,11 +114,10 @@ export async function assertNoConflict(
       after: Record<string, unknown> | null;
       version: number;
       changedById: string | null;
-      name: string | null;
     }[]
   >(
-    `SELECT r."before", r."after", r."version", r."changedById", u."name"
-       FROM "revisions" r LEFT JOIN "users" u ON u."id" = r."changedById"
+    `SELECT r."before", r."after", r."version", r."changedById"
+       FROM "revisions" r
       WHERE r."entityId" = $1 AND r."version" > $2
         AND r."changedById" IS DISTINCT FROM $3
       ORDER BY r."version" DESC`,
@@ -129,7 +129,9 @@ export async function assertNoConflict(
     );
     if (fields.length === 0) continue;
     const current = currentOf(now, target);
-    const who = revision.name ?? 'Someone';
+    // Their name, asked of the accounts (auth); a deleted account is "Someone".
+    const who =
+      (revision.changedById ? await accountNameOf(db, revision.changedById) : null) ?? 'Someone';
     const what = [...new Set(fields.map((field) => LABELS[field] ?? field))].join(' and ');
     const name =
       target.entityType === 'link'
@@ -137,10 +139,7 @@ export async function assertNoConflict(
         : typeof current?.name === 'string'
           ? `“${current.name}”`
           : 'it';
-    const [row] = await db.query<{ version: number }[]>(
-      `SELECT "version" FROM "${TABLES[target.entityType]}" WHERE "id" = $1`,
-      [target.id],
-    );
+    const version = await ROWS[target.entityType].versionOf(db, target.id);
     throw new ConflictException({
       message: `${who} changed ${what} of ${name} meanwhile. Your change wasn't saved`,
       details: {
@@ -149,7 +148,7 @@ export async function assertNoConflict(
         changedBy: revision.changedById ? { id: revision.changedById, name: who } : null,
         // What is there now, and its version: send that version to save over it.
         current,
-        version: row?.version ?? null,
+        version,
       },
     });
   }

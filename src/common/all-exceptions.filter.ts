@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { EntityNotFoundError, QueryFailedError } from 'typeorm';
-import { ScheduleError } from '../scheduling/schedule.js';
+import { ScheduleError } from '../tasks/scheduling/schedule.js';
 
 interface ErrorInfo {
   status: number;

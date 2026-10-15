@@ -4,7 +4,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { DatabaseModule } from '../database/database.module.js';
 import { ProjectsService } from './projects.service.js';
 import { ProjectsController } from './projects.controller.js';
-import { Member } from '../members/entities/member.entity.js';
 import { Project } from './entities/project.entity.js';
 
 @Module({
@@ -13,7 +12,7 @@ import { Project } from './entities/project.entity.js';
     DatabaseModule,
     // AuthGuard (and the JwtService it needs).
     AuthModule,
-    TypeOrmModule.forFeature([Project, Member]),
+    TypeOrmModule.forFeature([Project]),
   ],
   controllers: [ProjectsController],
   providers: [ProjectsService],

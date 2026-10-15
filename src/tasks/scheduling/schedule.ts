@@ -1,4 +1,4 @@
-import { FIRST_YEAR, LAST_YEAR } from '../common/is-day.js';
+import { FIRST_YEAR, LAST_YEAR } from '../../common/is-day.js';
 // The scheduling rules of task dependencies, as plain functions on in-memory data so they can be
 // tested without a database. Days are whole days; an end date is the last day of the task, so a
 // one-day task has start === end.

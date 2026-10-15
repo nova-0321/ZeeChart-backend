@@ -3,23 +3,19 @@ import { RequestTransaction } from '../database/request-transaction.js';
 import type { DependencyDto } from './dto/dependency.dto.js';
 import type { UpdateDependencyDto } from './dto/update-dependency.dto.js';
 import { TaskDependency } from './entities/task-dependency.entity.js';
-import { Task } from '../tasks/entities/task.entity.js';
-import { groupLoop } from '../tasks/group-loop.js';
-import { TaskScheduler } from '../scheduling/task-scheduler.service.js';
+import { TaskService } from '../tasks/task.service.js';
+import { TaskScheduler } from '../tasks/scheduling/task-scheduler.service.js';
 
 @Injectable()
 export class DependencyService {
   constructor(
     private readonly tx: RequestTransaction,
     private readonly scheduler: TaskScheduler,
+    private readonly tasks: TaskService,
   ) {}
 
   private get dependencyRepo() {
     return this.tx.repo(TaskDependency);
-  }
-
-  private get taskRepo() {
-    return this.tx.repo(Task);
   }
 
   findByProject(projectId: string) {
@@ -39,12 +35,15 @@ export class DependencyService {
     if (dto.fromTaskId === dto.toTaskId) {
       throw new BadRequestException('A task cannot depend on itself');
     }
-    const from = await this.taskRepo.findOneByOrFail({ id: dto.fromTaskId });
-    const to = await this.taskRepo.findOneByOrFail({ id: dto.toTaskId });
+    const from = await this.tasks.findOne(dto.fromTaskId);
+    const to = await this.tasks.findOne(dto.toTaskId);
     if (from.projectId !== to.projectId) {
       throw new BadRequestException('Both tasks must belong to the same project');
     }
-    if ((await this.isAncestor(from, to.id)) || (await this.isAncestor(to, from.id))) {
+    if (
+      (await this.tasks.isInside(to.id, from.id)) ||
+      (await this.tasks.isInside(from.id, to.id))
+    ) {
       throw new BadRequestException('A group cannot be linked to a task inside it');
     }
     const duplicate = await this.dependencyRepo.existsBy({
@@ -92,22 +91,6 @@ export class DependencyService {
   async remove(id: string) {
     const dependency = await this.dependencyRepo.findOneByOrFail({ id });
     await this.dependencyRepo.remove(dependency);
-  }
-
-  /**
-   * Whether `descendantId` is somewhere below `task` in the group tree. A chain that comes back to
-   * a task it passed (a loop already in the data) is refused: there is no right answer on it.
-   */
-  private async isAncestor(task: Task, descendantId: string) {
-    const seen = new Set<string>();
-    let current = await this.taskRepo.findOneBy({ id: descendantId });
-    while (current?.parentId) {
-      if (current.parentId === task.id) return true;
-      if (seen.has(current.id)) throw groupLoop();
-      seen.add(current.id);
-      current = await this.taskRepo.findOneBy({ id: current.parentId });
-    }
-    return false;
   }
 
   /** Whether `target` can be reached from `start` by following the links forward. */

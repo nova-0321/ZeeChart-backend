@@ -3,15 +3,20 @@ import { randomUUID } from 'node:crypto';
 import type { EntityManager } from 'typeorm';
 import { RequestTransaction } from '../database/request-transaction.js';
 import type { MyProjectDto } from '../projects/dto/my-project.dto.js';
-import { roleIn } from '../projects/project-access.js';
+import { roleIn } from '../members/membership.js';
 import { assertNameFree, ProjectsService } from '../projects/projects.service.js';
 import { asVersionDto, type VersionDto, type VersionSummaryDto } from './dto/version.dto.js';
 import { ProjectVersion, type VersionKind } from './entities/project-version.entity.js';
 import { KEEP_MANUAL_VERSIONS, MAX_STARRED_VERSIONS } from './history-limits.js';
 import type { Snapshot } from './revision-diff.js';
 import { loadSnapshot } from './revision-state.js';
-import { setTaskParent, writeEvent, writeLink, writeTask } from './revision-write.js';
 import { contentOf, sameContent, type VersionContent } from './version-content.js';
+// Each kind of row is written back by the domain that owns it (#55).
+import { deleteLinksOf, writeLink } from '../dependencies/link-rows.js';
+import { deleteEventsExcept, writeEvent } from '../events/event-rows.js';
+import { ownedNamesLike, ownerIdsOf } from '../members/membership.js';
+import { writeProjectFields } from '../projects/project-rows.js';
+import { deleteTasksExcept, setTaskParent, writeTask } from '../tasks/task-rows.js';
 
 /** An auto version is saved after a change when the newest version is older than this. */
 export const AUTO_EVERY_MS = 10 * 60 * 1000;
@@ -268,12 +273,7 @@ export class VersionsService {
 
   /** `base`, or `base 2`, `base 3`...: the first that none of the projects you own is called. */
   private async freeName(userId: string, base: string) {
-    const rows = await this.tx.manager.query<{ name: string }[]>(
-      `SELECT p."name" FROM "projects" p JOIN "members" m ON m."projectId" = p."id"
-        WHERE m."userId" = $1 AND m."role" = 'owner' AND (p."name" = $2 OR p."name" LIKE $3)`,
-      [userId, base, `${base} %`],
-    );
-    const taken = new Set(rows.map((row) => row.name));
+    const taken = new Set(await ownedNamesLike(this.tx.manager, userId, base));
     if (!taken.has(base)) return base;
     let n = 2;
     while (taken.has(`${base} ${n}`)) n += 1;
@@ -290,15 +290,9 @@ export class VersionsService {
     const taskIds = content.tasks.map((task) => task.id);
     const eventIds = content.events.map((event) => event.id);
     // Links first (they refer to tasks), then what the version doesn't have.
-    await manager.query(`DELETE FROM "task_dependencies" WHERE "projectId" = $1`, [projectId]);
-    await manager.query(
-      `DELETE FROM "tasks" WHERE "projectId" = $1 AND NOT ("id" = ANY($2::uuid[]))`,
-      [projectId, taskIds],
-    );
-    await manager.query(
-      `DELETE FROM "events" WHERE "projectId" = $1 AND NOT ("id" = ANY($2::uuid[]))`,
-      [projectId, eventIds],
-    );
+    await deleteLinksOf(manager, projectId);
+    await deleteTasksExcept(manager, projectId, taskIds);
+    await deleteEventsExcept(manager, projectId, eventIds);
     for (const task of content.tasks) await writeTask(manager, projectId, task);
     for (const task of content.tasks) {
       if (task.parentId) await setTaskParent(manager, task.id, task.parentId);
@@ -309,22 +303,14 @@ export class VersionsService {
       // The name only when no owner of it owns another project of that name now (names are unique
       // among the projects one owns: see assertNameFree); otherwise it keeps the name it has.
       let nameFree = true;
-      const owners = await manager.query<{ userId: string }[]>(
-        `SELECT "userId" FROM "members" WHERE "projectId" = $1 AND "role" = 'owner' ORDER BY "userId"`,
-        [projectId],
-      );
-      for (const owner of owners) {
+      for (const ownerId of await ownerIdsOf(manager, projectId)) {
         try {
-          await assertNameFree(manager, owner.userId, content.project.name, projectId);
+          await assertNameFree(manager, ownerId, content.project.name, projectId);
         } catch {
           nameFree = false;
         }
       }
-      await manager.query(
-        `UPDATE "projects" SET "description" = $2, "name" = CASE WHEN $4 THEN $3 ELSE "name" END
-          WHERE "id" = $1`,
-        [projectId, content.project.description, content.project.name, nameFree],
-      );
+      await writeProjectFields(manager, projectId, content.project, nameFree);
     }
   }
 

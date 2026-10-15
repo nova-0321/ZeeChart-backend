@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { DependencyService } from './dependency.service.js';
 import { TaskDependency } from './entities/task-dependency.entity.js';
+import { TaskService } from '../tasks/task.service.js';
 
 const PROJECT = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
 const A = '0b1f1d6e-3c1a-4e0a-9d8b-5a5f6f7c8d90';
@@ -48,7 +49,14 @@ describe('DependencyService.create', () => {
     tx.repo.mockImplementation((entity: unknown) =>
       entity === TaskDependency ? dependencyRepo : taskRepo,
     );
-    service = new DependencyService(tx as never, scheduler as never);
+    // The real TaskService over the same task rows: the tasks are read, and the group tree walked,
+    // there (#55).
+    const tasks = new TaskService(
+      { repo: () => taskRepo } as never,
+      scheduler as never,
+      {} as never,
+    );
+    service = new DependencyService(tx as never, scheduler as never, tasks);
   });
 
   it('links two tasks of a project, finish to start unless told otherwise', async () => {
@@ -87,6 +95,14 @@ describe('DependencyService.create', () => {
       Promise.resolve(task(id, id === B ? { parentId: A } : {})),
     );
     await expect(service.create({ fromTaskId: A, toTaskId: B })).rejects.toThrow('inside it');
+  });
+
+  it('rejects a link from a task to the group that holds it', async () => {
+    taskRepo.findOneBy.mockImplementation(({ id }: { id: string }) =>
+      Promise.resolve(task(id, id === B ? { parentId: A } : {})),
+    );
+    await expect(service.create({ fromTaskId: B, toTaskId: A })).rejects.toThrow('inside it');
+    expect(dependencyRepo.save).not.toHaveBeenCalled();
   });
 
   it('stores nothing when the schedule cannot hold the link', async () => {

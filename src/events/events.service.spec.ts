@@ -19,16 +19,17 @@ describe('EventsService', () => {
     save: vi.fn(),
     remove: vi.fn(),
     findOneByOrFail: vi.fn(),
-    manager: { exists: vi.fn() },
   };
+  /** ProjectsService: events ask it whether their project exists. */
+  const projects = { exists: vi.fn() };
   let service: EventsService;
 
   beforeEach(() => {
     vi.resetAllMocks();
     repo.create.mockImplementation((values: object) => values);
     repo.save.mockImplementation((value: object) => Promise.resolve({ id: 'e1', ...value }));
-    repo.manager.exists.mockResolvedValue(true);
-    service = new EventsService({ repo: () => repo } as never);
+    projects.exists.mockResolvedValue(true);
+    service = new EventsService({ repo: () => repo } as never, projects as never);
   });
 
   it('lists the earliest events first', async () => {
@@ -60,8 +61,10 @@ describe('EventsService', () => {
   });
 
   it('answers 404 for a project that does not exist, and saves nothing', async () => {
-    repo.manager.exists.mockResolvedValue(false);
+    projects.exists.mockResolvedValue(false);
     await expect(service.create(body() as never)).rejects.toBeInstanceOf(NotFoundException);
+    // Asked of the projects domain, not read from its table.
+    expect(projects.exists).toHaveBeenCalledWith(PROJECT);
     expect(repo.save).not.toHaveBeenCalled();
   });
 

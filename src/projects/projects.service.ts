@@ -1,11 +1,15 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { type EntityManager, Not } from 'typeorm';
+import type { EntityManager } from 'typeorm';
 import { RequestTransaction } from '../database/request-transaction.js';
 import { rejectNulls } from '../common/reject-nulls.js';
-import { Member } from '../members/entities/member.entity.js';
-import { ProjectVersion } from '../revisions/entities/project-version.entity.js';
-import { Revision } from '../revisions/entities/revision.entity.js';
+import {
+  addOwner,
+  membershipOf,
+  membershipsOf,
+  ownerIdsOf,
+  ownsProjectNamed,
+} from '../members/membership.js';
+import { startHistory } from '../revisions/history-start.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
 import { asMyProject, type MyProjectDto } from './dto/my-project.dto.js';
 import { UpdateProjectDto } from './dto/update-project.dto.js';
@@ -19,10 +23,6 @@ export class ProjectsService {
     return this.tx.repo(Project);
   }
 
-  private get memberRepo() {
-    return this.tx.repo(Member);
-  }
-
   /** A new project; whoever makes it is its first owner. */
   create(createProjectDto: CreateProjectDto, userId: string): Promise<MyProjectDto> {
     return this.tx.run(async (manager) => {
@@ -31,61 +31,65 @@ export class ProjectsService {
       const project = await manager.save(
         manager.create(Project, { ...createProjectDto, version: 1 }),
       );
-      const member = await manager.save(
-        manager.create(Member, { projectId: project.id, userId, role: 'owner' }),
-      );
-      // The first line of its history (later changes are recorded by RevisionInterceptor).
-      const state = {
-        id: project.id,
-        name: project.name,
-        description: project.description ?? null,
-        archived: project.archived,
-      };
-      await manager.save(
-        manager.create(Revision, {
-          projectId: project.id,
-          entityType: 'project',
-          entityId: project.id,
-          version: 1,
-          action: 'create',
-          changedById: userId,
-          summary: `Created project “${project.name}”`,
-          before: null,
-          after: state,
-          batchId: randomUUID(),
-          primary: true,
-        }),
-      );
-      // And its first version, v1 (empty): later ones are saved as it changes.
-      await manager.save(
-        manager.create(ProjectVersion, {
-          projectId: project.id,
-          number: 1,
-          kind: 'auto',
-          content: { project: state, tasks: [], events: [], links: [] },
-          createdById: userId,
-        }),
+      // Its first owner, and the start of its history: members and revisions write their own rows,
+      // in this transaction.
+      const member = await addOwner(manager, project.id, userId);
+      await startHistory(
+        manager,
+        {
+          id: project.id,
+          name: project.name,
+          description: project.description ?? null,
+          archived: project.archived,
+        },
+        userId,
       );
       return asMyProject({ ...member, project, addedBy: null });
     });
   }
 
+  /** Whether the project exists: other domains ask here, before they add a row to it. */
+  exists(id: string): Promise<boolean> {
+    return this.projectRepo.existsBy({ id });
+  }
+
+  /**
+   * Holds the project's row until `manager`'s transaction ends, so changes to its members wait for
+   * each other (MembersService). 404 when there is no such project.
+   */
+  async lockForUpdate(manager: EntityManager, id: string): Promise<void> {
+    const project = await manager
+      .createQueryBuilder(Project, 'project')
+      .setLock('pessimistic_write')
+      .where('project.id = :id', { id })
+      .getOne();
+    if (!project) throw new NotFoundException('Not found');
+  }
+
+  /**
+   * Before `userId` becomes an owner of the project: they own no other project of its name (see
+   * assertNameFree). In `manager`'s transaction. 404 when there is no such project.
+   */
+  async assertNewOwnerNameFree(manager: EntityManager, id: string, userId: string): Promise<void> {
+    const project = await manager.findOneBy(Project, { id });
+    if (!project) throw new NotFoundException('Not found');
+    await assertNameFree(
+      manager,
+      userId,
+      project.name,
+      id,
+      `They already own a project called “${project.name}”: one of the two needs another name first`,
+    );
+  }
+
   /** The projects `userId` is a member of, newest first (archived ones included). */
   async findAll(userId: string): Promise<MyProjectDto[]> {
-    const memberships = await this.memberRepo.find({
-      where: { userId },
-      relations: { project: true, addedBy: true },
-      order: { project: { createdAt: 'DESC' } },
-    });
-    return memberships.map(asMyProject);
+    return (await membershipsOf(this.tx.manager, userId)).map(asMyProject);
   }
 
   /** One project, with `userId`'s place in it; 404 when they are not a member. */
   async findOne(id: string, userId: string): Promise<MyProjectDto> {
-    const membership = await this.memberRepo.findOne({
-      where: { projectId: id, userId },
-      relations: { project: true, addedBy: true },
-    });
+    const membership = await membershipOf(this.tx.manager, id, userId);
     if (!membership) throw new NotFoundException(`Project ${id} not found`);
     return asMyProject(membership);
   }
@@ -99,18 +103,13 @@ export class ProjectsService {
       const { name } = updateProjectDto;
       if (name !== undefined && name !== project.name) {
         // Not only the one renaming it: every owner of it, so none ends up owning two of a name.
-        const owners = await manager.find(Member, {
-          select: { userId: true },
-          where: { projectId: id, role: 'owner' },
-          order: { userId: 'ASC' },
-        });
-        for (const owner of owners) {
+        for (const ownerId of await ownerIdsOf(manager, id)) {
           await assertNameFree(
             manager,
-            owner.userId,
+            ownerId,
             name,
             id,
-            owner.userId === userId
+            ownerId === userId
               ? undefined
               : 'Another owner of this project already has a project with this name',
           );
@@ -158,13 +157,7 @@ export async function assertNameFree(
   message = 'You already have a project with this name',
 ) {
   await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`project-names:${userId}`]);
-  const taken = await manager.exists(Member, {
-    where: {
-      userId,
-      role: 'owner',
-      project: { name, ...(exceptId ? { id: Not(exceptId) } : {}) },
-    },
-    relations: { project: true },
-  });
-  if (taken) throw new ConflictException(message);
+  if (await ownsProjectNamed(manager, userId, name, exceptId)) {
+    throw new ConflictException(message);
+  }
 }

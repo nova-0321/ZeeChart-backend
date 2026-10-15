@@ -26,7 +26,7 @@ import { SessionEvents } from './token.js';
   controllers: [AuthController],
   providers: [AuthService, AuthGuard, SessionEvents],
   // Other modules protect their routes with the same guard; the live connection hears of sign-ins
-  // that were ended (SessionEvents).
-  exports: [AuthGuard, JwtModule, SessionEvents],
+  // that were ended (SessionEvents); other domains read accounts through AuthService.
+  exports: [AuthGuard, JwtModule, SessionEvents, AuthService],
 })
 export class AuthModule {}

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
-import { RequestTransaction } from '../database/request-transaction.js';
+import { RequestTransaction } from '../../database/request-transaction.js';
 import {
   planAttach,
   planEdit,
@@ -11,8 +11,8 @@ import {
   type DatedChange,
   type ScheduleLink,
 } from './schedule.js';
-import { TaskDependency } from '../dependencies/entities/task-dependency.entity.js';
-import { Task } from '../tasks/entities/task.entity.js';
+import { linksOf } from '../../dependencies/link-rows.js';
+import { Task } from '../entities/task.entity.js';
 
 const day = (date: Date | string) => String(date).slice(0, 10);
 
@@ -141,7 +141,7 @@ export class TaskScheduler {
   private async load(projectId: string, manager: EntityManager = this.taskRepo.manager) {
     // One after the other: in a transaction both use its one connection (see loadSnapshot).
     const taskRows = await manager.find(Task, { where: { projectId } });
-    const linkRows = await manager.find(TaskDependency, { where: { projectId } });
+    const links = await linksOf(manager, projectId);
     return {
       tasks: taskRows.map((row) => ({
         id: row.id,
@@ -151,13 +151,7 @@ export class TaskScheduler {
         startDate: day(row.startDate),
         endDate: day(row.endDate),
       })),
-      links: linkRows.map((row) => ({
-        id: row.id,
-        fromTaskId: row.fromTaskId,
-        toTaskId: row.toTaskId,
-        type: row.type,
-        lagDays: row.lagDays,
-      })),
+      links,
     };
   }
 

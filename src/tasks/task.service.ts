@@ -2,12 +2,12 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { IsNull, type EntityManager } from 'typeorm';
 import { RequestTransaction } from '../database/request-transaction.js';
 import { rejectNulls } from '../common/reject-nulls.js';
-import { Project } from '../projects/entities/project.entity.js';
+import { ProjectsService } from '../projects/projects.service.js';
 import { TaskDto } from './dto/task.dto.js';
 import type { UpdateTaskDto } from './dto/update-task.dto.js';
 import { Task } from './entities/task.entity.js';
 import { groupLoop } from './group-loop.js';
-import { TaskScheduler } from '../scheduling/task-scheduler.service.js';
+import { TaskScheduler } from './scheduling/task-scheduler.service.js';
 
 /** The day ("YYYY-MM-DD") of a date as the API takes it: what is stored is its first ten characters. */
 const dayOf = (date: Date | string) =>
@@ -18,6 +18,7 @@ export class TaskService {
   constructor(
     private readonly tx: RequestTransaction,
     private readonly scheduler: TaskScheduler,
+    private readonly projects: ProjectsService,
   ) {}
 
   private get taskRepo() {
@@ -33,15 +34,72 @@ export class TaskService {
     });
   }
 
+  /** One task; 404 when there is none (other domains read tasks here). */
+  findOne(id: string): Promise<Task> {
+    return this.taskRepo.findOneByOrFail({ id });
+  }
+
+  /**
+   * Whether `taskId` is somewhere inside the group `groupId` (at any depth). A chain that comes back
+   * to a task it passed (a loop already in the data) is refused: there is no right answer on it.
+   */
+  async isInside(taskId: string, groupId: string): Promise<boolean> {
+    const seen = new Set<string>();
+    let current = await this.taskRepo.findOneBy({ id: taskId });
+    while (current?.parentId) {
+      if (current.parentId === groupId) return true;
+      if (seen.has(current.id)) throw groupLoop();
+      seen.add(current.id);
+      current = await this.taskRepo.findOneBy({ id: current.parentId });
+    }
+    return false;
+  }
+
+  // For restoring a task from its history (revisions), which reads and writes tasks here (#55).
+
+  /** One task, or null when there is none. */
+  find(id: string): Promise<Task | null> {
+    return this.taskRepo.findOneBy({ id });
+  }
+
+  /** How many tasks the group holds (directly). */
+  childCount(id: string): Promise<number> {
+    return this.taskRepo.countBy({ parentId: id });
+  }
+
+  /**
+   * Whether `parentId` is a group of the project that may hold `taskId` (not inside it). A group
+   * whose chain loops (a loop already in the data) can't: the task stays where it is.
+   */
+  async canHold(projectId: string, parentId: string, taskId: string): Promise<boolean> {
+    let node = await this.taskRepo.findOneBy({ id: parentId });
+    if (!node || node.projectId !== projectId || node.type !== 'group') return false;
+    const seen = new Set<string>();
+    while (node) {
+      if (node.id === taskId || seen.has(node.id)) return false;
+      seen.add(node.id);
+      node = node.parentId ? await this.taskRepo.findOneBy({ id: node.parentId }) : null;
+    }
+    return true;
+  }
+
+  /**
+   * A deleted task made again with its own id (so its history goes on). In a group, the group has
+   * to cover it (and a link may forbid it): the scheduler does both, as for a new task.
+   */
+  recreate(fields: Partial<Task> & Pick<Task, 'id' | 'projectId' | 'parentId'>): Promise<Task> {
+    const task = this.taskRepo.create(fields);
+    return task.parentId ? this.scheduler.saveAttached(task) : this.taskRepo.save(task);
+  }
+
   async create(dto: TaskDto) {
     if (dayOf(dto.endDate) < dayOf(dto.startDate)) {
       throw new BadRequestException('The end date must not be before the start date');
     }
     // The foreign key would reject a missing project too, but only with a vague 409.
-    const projectExists = await this.taskRepo.manager.exists(Project, {
-      where: { id: dto.projectId },
-    });
-    if (!projectExists) throw new NotFoundException('Project not found');
+    if (!(await this.projects.exists(dto.projectId))) {
+      throw new NotFoundException('Project not found');
+    }
     if (dto.parentId) {
       await this.assertValidParent(null, dto.projectId, dto.parentId);
     }

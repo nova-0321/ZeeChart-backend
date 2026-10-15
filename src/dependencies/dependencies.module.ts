@@ -2,8 +2,8 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DatabaseModule } from '../database/database.module.js';
 import { AuthModule } from '../auth/auth.module.js';
-import { SchedulingModule } from '../scheduling/scheduling.module.js';
-import { Task } from '../tasks/entities/task.entity.js';
+import { SchedulingModule } from '../tasks/scheduling/scheduling.module.js';
+import { TaskModule } from '../tasks/task.module.js';
 import { DependencyController } from './dependency.controller.js';
 import { DependencyService } from './dependency.service.js';
 import { TaskDependency } from './entities/task-dependency.entity.js';
@@ -15,8 +15,10 @@ import { TaskDependency } from './entities/task-dependency.entity.js';
     DatabaseModule,
     // AuthGuard (and the JwtService it needs).
     AuthModule,
-    TypeOrmModule.forFeature([TaskDependency, Task]),
+    TypeOrmModule.forFeature([TaskDependency]),
     SchedulingModule,
+    // The linked tasks are read through TaskService.
+    TaskModule,
   ],
   controllers: [DependencyController],
   providers: [DependencyService],

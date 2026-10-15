@@ -11,8 +11,8 @@ import { isUUID } from 'class-validator';
 import type { Request } from 'express';
 import { DataSource, type EntityManager, type EntityTarget, type ObjectLiteral } from 'typeorm';
 import type { AuthedRequest } from '../auth/auth.guard.js';
-import { Member } from '../members/entities/member.entity.js';
 import { type MemberRole, roleCovers } from '../members/member-role.js';
+import { roleIn } from '../members/membership.js';
 
 // Only a project's members see it (and its tasks, links, events and members), and their role says
 // what they may change (see members/member-role.ts). Each route says how to find its project and
@@ -145,16 +145,4 @@ export const isArchived = async (db: DataSource | EntityManager, projectId: stri
     [projectId],
   );
   return rows[0]?.archived === true;
-};
-
-/** Someone's role in a project, or null when they are not a member. */
-export const roleIn = async (
-  db: DataSource | EntityManager,
-  projectId: string,
-  userId: string,
-): Promise<MemberRole | null> => {
-  const member = await db
-    .getRepository(Member)
-    .findOne({ select: { role: true }, where: { projectId, userId } });
-  return member?.role ?? null;
 };
