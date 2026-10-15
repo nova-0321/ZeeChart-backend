@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { LAST_OWNER } from '../src/members/members.service.js';
+import { ProjectsService } from '../src/projects/projects.service.js';
 import { deleteTestAccounts } from './cleanup.js';
 import { createValidationPipe } from '../src/common/validation.js';
 
@@ -222,10 +223,27 @@ describe('Members (e2e)', () => {
     const annRow = (await add(owner, projectId, { email: ann.email, role: 'owner' }).expect(201))
       .body.member as MemberBody;
     const ownerRow = (await list(owner, projectId)).find((m) => m.userId === owner.id)!;
+    // The race, every time, not by chance: once past the project's lock, each demotion waits for
+    // the other to get past it too, and both go on at the same moment. Without the lock, both
+    // would count two owners, and both demotions would pass. With it, the second can't get past
+    // until the first commits: the first goes on alone after a second, and the second then counts
+    // one owner.
+    const projects = app.get(ProjectsService);
+    const lock = projects.lockForUpdate.bind(projects);
+    let past = 0;
+    let release = () => {};
+    const bothPast = new Promise<void>((resolve) => (release = resolve));
+    const held = vi.spyOn(projects, 'lockForUpdate').mockImplementation(async (manager, id) => {
+      await lock(manager, id);
+      past += 1;
+      if (past === 2) release();
+      await Promise.race([bothPast, new Promise((resolve) => setTimeout(resolve, 1_000))]);
+    });
     const answers = await Promise.all([
       as(owner, http().patch(`/members/${annRow.id}`)).send({ role: 'editor' }),
       as(ann, http().patch(`/members/${ownerRow.id}`)).send({ role: 'editor' }),
     ]);
+    held.mockRestore();
     const statuses = answers.map((r) => r.status).sort();
     // The loser is refused: 409 when the other demotion committed first, or 403 when it was
     // demoted itself before its own request was checked.
@@ -233,6 +251,28 @@ describe('Members (e2e)', () => {
     expect([403, 409]).toContain(statuses[1]);
     const owners = (await list(owner, projectId)).filter((m) => m.role === 'owner');
     expect(owners).toHaveLength(1);
+  });
+
+  it('no one becomes an owner of a project named like one they already own (409)', async () => {
+    const { owner, projectId } = await setUp();
+    const { name } = (await as(owner, http().get(`/projects/${projectId}`)).expect(200)).body as {
+      name: string;
+    };
+    const ann = await signUp('Ann');
+    await as(ann, http().post('/projects')).send({ name }).expect(201);
+    const refused = `They already own a project called “${name}”: one of the two needs another name first`;
+
+    // Invited as an owner straight away.
+    const asOwner = await add(owner, projectId, { email: ann.email, role: 'owner' }).expect(409);
+    expect((asOwner.body as { message: string }).message).toBe(refused);
+    // Or made an owner later.
+    const annRow = (await add(owner, projectId, { email: ann.email }).expect(201)).body
+      .member as MemberBody;
+    const promoted = await as(owner, http().patch(`/members/${annRow.id}`))
+      .send({ role: 'owner' })
+      .expect(409);
+    expect((promoted.body as { message: string }).message).toBe(refused);
+    expect((await list(owner, projectId)).find((m) => m.userId === ann.id)?.role).toBe('editor');
   });
 
   it('someone removed loses the project at once (404, as if it never existed)', async () => {

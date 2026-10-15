@@ -24,7 +24,7 @@ import { DependencyService } from './dependency.service.js';
 import { DependencyDto } from './dto/dependency.dto.js';
 import { UpdateDependencyDto } from './dto/update-dependency.dto.js';
 import { TaskDependency } from './entities/task-dependency.entity.js';
-import { Task } from '../tasks/entities/task.entity.js';
+import { projectOfTask } from '../tasks/task-project.js';
 
 // Each route says the role it needs in the project (@ProjectAccess: viewers read, editors change;
 // 404 for non-members) and each write who is told after it (@Broadcast: everyone with it open).
@@ -44,11 +44,11 @@ export class DependencyController {
   /** Make `toTaskId` come after `fromTaskId`. Rejects self links, duplicates and cycles; moves the successor later if it is too early. */
   // A new link's project is its first task's (the service checks both tasks share it).
   @Post()
-  @ProjectAccess('editor', projectOfRow(Task, 'fromTaskId', 'body'))
+  @ProjectAccess('editor', projectOfTask('fromTaskId', 'body'))
   @Broadcast({
     entity: 'dependency',
     action: 'create',
-    project: projectOfRow(Task, 'fromTaskId', 'body'),
+    project: projectOfTask('fromTaskId', 'body'),
   })
   create(@Body() dto: DependencyDto) {
     return this.dependencyService.create(dto);

@@ -8,10 +8,9 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes } from 'node:crypto';
 import { DataSource, type EntityManager, Repository } from 'typeorm';
-import { User } from '../auth/entities/user.entity.js';
-import { Project } from '../projects/entities/project.entity.js';
-import { roleIn } from '../projects/project-access.js';
-import { assertNameFree } from '../projects/projects.service.js';
+import { AuthService } from '../auth/auth.service.js';
+import { roleIn } from './membership.js';
+import { ProjectsService } from '../projects/projects.service.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { AddMemberDto } from './dto/add-member.dto.js';
 import {
@@ -52,12 +51,13 @@ export class MembersService {
   constructor(
     @InjectRepository(Member)
     private readonly memberRepo: Repository<Member>,
-    @InjectRepository(User)
-    private readonly userRepo: Repository<User>,
     @InjectRepository(Invitation)
     private readonly invitationRepo: Repository<Invitation>,
     private readonly db: DataSource,
     private readonly realtime: RealtimeService,
+    // Accounts and projects belong to their own domains: read through their services (#55).
+    private readonly auth: AuthService,
+    private readonly projects: ProjectsService,
   ) {}
 
   /** The members of a project, in the order they joined. */
@@ -72,17 +72,17 @@ export class MembersService {
 
   /** Adds someone who has an account (found by email), as an editor unless told otherwise. */
   async add(projectId: string, dto: AddMemberDto, addedById: string): Promise<MemberDto> {
-    const user = await this.userRepo.findOneBy({ email: dto.email });
+    const user = await this.auth.findByEmail(dto.email);
     if (!user) throw new NotFoundException('No one has signed up with this email');
     const id = await this.db.transaction(async (manager) => {
-      await lockProject(manager, projectId);
+      await this.projects.lockForUpdate(manager, projectId);
       if (await manager.existsBy(Member, { projectId, userId: user.id })) {
         throw new ConflictException(`${user.name} is already a member of this project`);
       }
       // An invitation for them that was never taken up has no use any more.
       await manager.delete(Invitation, { projectId, email: user.email });
       const role = dto.role ?? 'editor';
-      if (role === 'owner') await assertOwnsNoSameName(manager, projectId, user.id);
+      if (role === 'owner') await this.projects.assertNewOwnerNameFree(manager, projectId, user.id);
       const saved = await manager.save(
         manager.create(Member, { projectId, userId: user.id, role, addedById }),
       );
@@ -95,10 +95,11 @@ export class MembersService {
 
   async changeRole(id: string, role: MemberRole): Promise<MemberDto> {
     const member = await this.db.transaction(async (manager) => {
-      const found = await lockedMember(manager, id);
+      const found = await this.lockedMember(manager, id);
       if (found.role === role) return null;
       if (found.role === 'owner') await assertAnotherOwner(manager, found);
-      if (role === 'owner') await assertOwnsNoSameName(manager, found.projectId, found.userId);
+      if (role === 'owner')
+        await this.projects.assertNewOwnerNameFree(manager, found.projectId, found.userId);
       await manager.update(Member, { id }, { role });
       return found;
     });
@@ -117,7 +118,7 @@ export class MembersService {
   /** Their tabs leave the project's room at once: they hear nothing more about it. */
   async remove(id: string, byUserId: string): Promise<void> {
     const member = await this.db.transaction(async (manager) => {
-      const found = await lockedMember(manager, id);
+      const found = await this.lockedMember(manager, id);
       // Someone else's place: an owner's to take away. Your own: yours to leave.
       if (
         found.userId !== byUserId &&
@@ -151,15 +152,15 @@ export class MembersService {
       invitation: null,
       token: null,
     });
-    if (await this.userRepo.existsBy({ email: dto.email })) return added();
+    if (await this.auth.hasAccount(dto.email)) return added();
     // A link gives what it says to whoever opens it, so never a whole project: owners are made
     // from the members list once they have joined.
     if (dto.role === 'owner') throw new BadRequestException(OWNER_LINK);
     const token = newToken();
     const id = await this.db.transaction(async (manager) => {
-      await lockProject(manager, projectId);
+      await this.projects.lockForUpdate(manager, projectId);
       // They signed up a moment ago: add them instead.
-      if (await manager.existsBy(User, { email: dto.email })) return null;
+      if (await this.auth.hasAccount(dto.email, manager)) return null;
       // One whose link has expired doesn't count: replaced by this one.
       await manager
         .createQueryBuilder()
@@ -266,7 +267,7 @@ export class MembersService {
     const found = await this.invitationRepo.findOneBy({ tokenHash: hashOf(token) });
     if (!found) throw new NotFoundException(LINK_GONE);
     const memberId = await this.db.transaction(async (manager) => {
-      await lockProject(manager, found.projectId);
+      await this.projects.lockForUpdate(manager, found.projectId);
       // Already in (an owner trying their own link, or someone it was forwarded to): the link is
       // left for the person it is for.
       if (await manager.existsBy(Member, { projectId: found.projectId, userId })) return null;
@@ -331,43 +332,23 @@ export class MembersService {
     if (!member) throw new NotFoundException('Not found');
     return asMemberDto(member);
   }
+
+  /**
+   * A member read under its project's lock (member changes to a project wait for each other), so
+   * its role can't change before the transaction ends.
+   */
+  private async lockedMember(manager: EntityManager, id: string) {
+    const before = await manager.findOneBy(Member, { id });
+    if (!before) throw new NotFoundException('Not found');
+    await this.projects.lockForUpdate(manager, before.projectId);
+    // Read again: another change may have finished while this one waited for the lock.
+    const member = await manager.findOneBy(Member, { id });
+    if (!member) throw new NotFoundException('Not found');
+    return member;
+  }
 }
-
-/** Holds the project's row until the transaction ends: member changes to it wait for each other. */
-const lockProject = async (manager: EntityManager, projectId: string) => {
-  const project = await manager
-    .createQueryBuilder(Project, 'project')
-    .setLock('pessimistic_write')
-    .where('project.id = :projectId', { projectId })
-    .getOne();
-  if (!project) throw new NotFoundException('Not found');
-};
-
-/** A member read under its project's lock, so its role can't change before the transaction ends. */
-const lockedMember = async (manager: EntityManager, id: string) => {
-  const before = await manager.findOneBy(Member, { id });
-  if (!before) throw new NotFoundException('Not found');
-  await lockProject(manager, before.projectId);
-  // Read again: another change may have finished while this one waited for the lock.
-  const member = await manager.findOneBy(Member, { id });
-  if (!member) throw new NotFoundException('Not found');
-  return member;
-};
 
 const assertAnotherOwner = async (manager: EntityManager, member: Member) => {
   const owners = await manager.countBy(Member, { projectId: member.projectId, role: 'owner' });
   if (owners <= 1) throw new ConflictException(LAST_OWNER);
-};
-
-/** Before someone becomes an owner of a project: they own no other project of its name. */
-const assertOwnsNoSameName = async (manager: EntityManager, projectId: string, userId: string) => {
-  const project = await manager.findOneBy(Project, { id: projectId });
-  if (!project) throw new NotFoundException('Not found');
-  await assertNameFree(
-    manager,
-    userId,
-    project.name,
-    projectId,
-    `They already own a project called “${project.name}”: one of the two needs another name first`,
-  );
 };

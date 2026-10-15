@@ -6,8 +6,8 @@ import {
 } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { RequestTransaction } from '../database/request-transaction.js';
-import { roleIn } from '../projects/project-access.js';
-import { TaskScheduler } from '../scheduling/task-scheduler.service.js';
+import { roleIn } from '../members/membership.js';
+import { TaskScheduler } from '../tasks/scheduling/task-scheduler.service.js';
 import type { UndoStepDto as UndoStep } from './dto/undo.dto.js';
 import { type BatchKind, Revision } from './entities/revision.entity.js';
 import {
@@ -22,8 +22,21 @@ import {
   type TaskState,
 } from './revision-diff.js';
 import { loadSnapshot } from './revision-state.js';
-import { setTaskParent, writeEvent, writeLink, writeTask } from './revision-write.js';
 import { UNDO_DEPTH } from './history-limits.js';
+import { ROWS } from './rows.js';
+// Each kind of row is written back by the domain that owns it (#55).
+import { writeLink } from '../dependencies/link-rows.js';
+import { writeEvent } from '../events/event-rows.js';
+import { ownersOwnProjectNamed } from '../members/membership.js';
+import { writeProjectRow } from '../projects/project-rows.js';
+import {
+  parentIdOf,
+  putAtPlace,
+  renumberClashes,
+  setTaskParent,
+  taskTreeOf,
+  writeTask,
+} from '../tasks/task-rows.js';
 
 /**
  * Undo and redo of one person's own changes in a project, whatever tab or device they made them
@@ -191,25 +204,25 @@ export class UndoService {
           // Its name back only if none of its owners has another project called that since.
           if (
             project.name !== now.project?.name &&
-            (await ownersHaveName(manager, projectId, project.name))
+            (await ownersOwnProjectNamed(manager, projectId, project.name))
           ) {
             throw new ConflictException(
               `Can't ${direction}: an owner of this project has another one called “${project.name}” now`,
             );
           }
-          await manager.query(
-            `UPDATE "projects" SET "name" = $2, "description" = $3, "archived" = $4 WHERE "id" = $1`,
-            [projectId, project.name, project.description, project.archived],
-          );
+          await writeProjectRow(manager, {
+            id: projectId,
+            name: project.name,
+            description: project.description,
+            archived: project.archived,
+          });
         }
       }
       // Removed first (a task's links go with it), then written, then groups and links.
       for (const { revision, wanted } of steps) {
-        if (wanted) continue;
-        const table = TABLES[revision.entityType];
-        if (table) {
-          await manager.query(`DELETE FROM "${table}" WHERE "id" = $1`, [revision.entityId]);
-        }
+        // The project itself is never deleted by an undo.
+        if (wanted || revision.entityType === 'project') continue;
+        await ROWS[revision.entityType].remove(manager, revision.entityId);
       }
       const tasks = steps.flatMap(({ revision, wanted }) =>
         revision.entityType === 'task' && wanted ? [wanted as TaskState] : [],
@@ -226,11 +239,7 @@ export class UndoService {
       // than done differently from what it says.
       for (const task of tasks) {
         if (!task.parentId) continue;
-        const [row] = await manager.query<{ parentId: string | null }[]>(
-          `SELECT "parentId" FROM "tasks" WHERE "id" = $1`,
-          [task.id],
-        );
-        if (row?.parentId !== task.parentId) {
+        if ((await parentIdOf(manager, task.id)) !== task.parentId) {
           throw new ConflictException(`Can't ${direction}: the group of “${task.name}” is gone`);
         }
       }
@@ -286,14 +295,6 @@ const currentOf = (now: Snapshot, revision: Revision): Row | null => {
   return now.project;
 };
 
-/** Where each kind of row is stored (the project itself is never deleted by an undo). */
-const TABLES: Record<Revision['entityType'], string | null> = {
-  task: 'tasks',
-  event: 'events',
-  link: 'task_dependencies',
-  project: null,
-};
-
 const FIELDS: Record<Revision['entityType'], readonly string[]> = {
   task: TASK_FIELDS,
   event: EVENT_FIELDS,
@@ -322,10 +323,7 @@ async function assertTreeHolds(
   projectId: string,
   direction: 'undo' | 'redo',
 ) {
-  const rows = await manager.query<{ id: string; parentId: string | null; type: string }[]>(
-    `SELECT "id", "parentId", "type" FROM "tasks" WHERE "projectId" = $1`,
-    [projectId],
-  );
+  const rows = await taskTreeOf(manager, projectId);
   const byId = new Map(rows.map((row) => [row.id, row]));
   const refuse = () => new ConflictException(`Can't ${direction}: the groups were changed since`);
   for (const row of rows) {
@@ -340,80 +338,8 @@ async function assertTreeHolds(
   }
 }
 
-/**
- * In each list level (a group's tasks, or the top level: null), rows on the same place are
- * numbered again from 1, in their order, the ones in `first` before the others on the same place.
- * Levels with no clash are left as they are.
- */
-async function renumberClashes(
-  manager: EntityManager,
-  projectId: string,
-  levels: Set<string | null>,
-  first: Set<string>,
-) {
-  for (const parentId of levels) {
-    const rows = await manager.query<{ id: string; order: number }[]>(
-      `SELECT "id", "order" FROM "tasks"
-        WHERE "projectId" = $1 AND "parentId" IS NOT DISTINCT FROM $2::uuid`,
-      [projectId, parentId],
-    );
-    if (new Set(rows.map((row) => row.order)).size === rows.length) continue;
-    rows.sort(
-      (a, b) =>
-        a.order - b.order ||
-        Number(first.has(b.id)) - Number(first.has(a.id)) ||
-        (a.id < b.id ? -1 : 1),
-    );
-    for (const [index, row] of rows.entries()) {
-      if (row.order !== index + 1) {
-        await manager.query(`UPDATE "tasks" SET "order" = $2 WHERE "id" = $1`, [row.id, index + 1]);
-      }
-    }
-  }
-}
-
 /** What an undo or redo did, and the tasks it put back at a place (their moves are recorded). */
 export interface Applied {
   step: UndoStep;
   placed: string[];
-}
-
-/**
- * Puts a task at `place` (0 first) among the tasks of its list (`parentId`; null: the top level)
- * as they are now, the others keeping their order; the list is numbered from 1 again.
- */
-async function putAtPlace(
-  manager: EntityManager,
-  projectId: string,
-  taskId: string,
-  parentId: string | null,
-  place: number,
-) {
-  const rows = await manager.query<{ id: string; order: number }[]>(
-    `SELECT "id", "order" FROM "tasks"
-      WHERE "projectId" = $1 AND "parentId" IS NOT DISTINCT FROM $2::uuid AND "id" <> $3
-      ORDER BY "order", "id"`,
-    [projectId, parentId, taskId],
-  );
-  const level = rows.map((row) => row.id);
-  level.splice(Math.min(Math.max(place, 0), level.length), 0, taskId);
-  const was = new Map(rows.map((row) => [row.id, row.order]));
-  for (const [index, id] of level.entries()) {
-    if (was.get(id) !== index + 1) {
-      await manager.query(`UPDATE "tasks" SET "order" = $2 WHERE "id" = $1`, [id, index + 1]);
-    }
-  }
-}
-
-/** Whether an owner of the project owns another project called `name`. */
-async function ownersHaveName(manager: EntityManager, projectId: string, name: string) {
-  const rows = await manager.query<unknown[]>(
-    `SELECT 1 FROM "projects" o
-       JOIN "members" om ON om."projectId" = o."id" AND om."role" = 'owner'
-      WHERE o."id" <> $1 AND o."name" = $2
-        AND om."userId" IN (SELECT "userId" FROM "members" WHERE "projectId" = $1 AND "role" = 'owner')
-      LIMIT 1`,
-    [projectId, name],
-  );
-  return rows.length > 0;
 }

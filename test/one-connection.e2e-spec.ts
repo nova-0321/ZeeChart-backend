@@ -109,6 +109,14 @@ describe('Every write on one database connection (e2e)', () => {
       email,
     });
     await write('delete', `/members/${added.member.id}`);
+    // Someone without an account gets an invitation instead: whether they have signed up meanwhile
+    // is read again inside the invite's transaction (AuthService.hasAccount with its manager).
+    const invited = await write<{ invitation: { id: string } }>(
+      'post',
+      `/projects/${p}/invitations`,
+      { email: `zzsolo-${randomUUID()}@example.com` },
+    );
+    await write('delete', `/invitations/${invited.invitation.id}`);
 
     // Undo and redo of the last change.
     await write('post', `/projects/${p}/undo`);

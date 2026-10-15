@@ -6,6 +6,9 @@ import { TaskService } from './task.service.js';
 const PROJECT_ID = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
 const GROUP_ID = '0b1f1d6e-3c1a-4e0a-9d8b-5a5f6f7c8d90';
 
+/** ProjectsService: tasks ask it whether their project exists. */
+const projects = { exists: vi.fn() };
+
 /** What the add-task form sends: no progress, order, type, priority or parentId. */
 const formBody = (extra: Partial<TaskDto> = {}) =>
   ({
@@ -24,7 +27,6 @@ describe('TaskService.create', () => {
     save: vi.fn(),
     createQueryBuilder: vi.fn(),
     findOneByOrFail: vi.fn(),
-    manager: { exists: vi.fn() },
   };
   const scheduler = { saveAttached: vi.fn() };
   let service: TaskService;
@@ -37,11 +39,11 @@ describe('TaskService.create', () => {
     repo.createQueryBuilder.mockReturnValue(query);
     repo.create.mockImplementation((values: object) => values);
     repo.save.mockImplementation((task: object) => Promise.resolve({ id: 't1', ...task }));
-    repo.manager.exists.mockResolvedValue(true);
+    projects.exists.mockResolvedValue(true);
     scheduler.saveAttached.mockImplementation((task: object) =>
       Promise.resolve({ id: 't1', ...task }),
     );
-    service = new TaskService({ repo: () => repo } as never, scheduler as never);
+    service = new TaskService({ repo: () => repo } as never, scheduler as never, projects as never);
   });
 
   it('gives a task from the form progress 0 and the first order, so the insert has every required column', async () => {
@@ -74,8 +76,10 @@ describe('TaskService.create', () => {
   });
 
   it('answers 404 for a project that does not exist, and saves nothing', async () => {
-    repo.manager.exists.mockResolvedValue(false);
+    projects.exists.mockResolvedValue(false);
     await expect(service.create(formBody())).rejects.toBeInstanceOf(NotFoundException);
+    // Asked of the projects domain, not read from its table.
+    expect(projects.exists).toHaveBeenCalledWith(PROJECT_ID);
     expect(repo.save).not.toHaveBeenCalled();
   });
 
@@ -115,7 +119,7 @@ describe('TaskService.setParent', () => {
     vi.resetAllMocks();
     repo.save.mockImplementation((task: object) => Promise.resolve(task));
     scheduler.saveAttached.mockImplementation((task: object) => Promise.resolve(task));
-    service = new TaskService({ repo: () => repo } as never, scheduler as never);
+    service = new TaskService({ repo: () => repo } as never, scheduler as never, projects as never);
   });
 
   it('puts the task under the group through the scheduler, which stretches the group', async () => {
@@ -165,7 +169,11 @@ describe('TaskService.setParent on groups that loop (old data)', () => {
       findOneBy: vi.fn(({ id }: { id: string }) => Promise.resolve(rows[id] ?? null)),
     };
     const scheduler = { saveAttached: vi.fn() };
-    const service = new TaskService({ repo: () => repo } as never, scheduler as never);
+    const service = new TaskService(
+      { repo: () => repo } as never,
+      scheduler as never,
+      projects as never,
+    );
     await expect(service.setParent('t', 'p')).rejects.toThrow(/groups loop into each other/);
     expect(scheduler.saveAttached).not.toHaveBeenCalled();
     expect(repo.findOneBy.mock.calls.length).toBeLessThan(5);
@@ -190,7 +198,7 @@ describe('TaskService.update', () => {
     repo.save.mockImplementation((task: object) => Promise.resolve(task));
     repo.findOneByOrFail.mockResolvedValue(stored());
     scheduler.applyDateEdit.mockImplementation((task: object) => Promise.resolve(task));
-    service = new TaskService({ repo: () => repo } as never, scheduler as never);
+    service = new TaskService({ repo: () => repo } as never, scheduler as never, projects as never);
   });
 
   it('changes only the fields that were sent', async () => {
@@ -266,7 +274,7 @@ describe('TaskService.remove', () => {
     repo.manager.transaction.mockImplementation((work: (m: typeof manager) => unknown) =>
       work(manager),
     );
-    service = new TaskService({ repo: () => repo } as never, scheduler as never);
+    service = new TaskService({ repo: () => repo } as never, scheduler as never, projects as never);
   });
 
   it('fits the group the task was in to the tasks that are left, in the same transaction', async () => {
@@ -365,7 +373,7 @@ describe('TaskService.move', () => {
         return task;
       },
     );
-    service = new TaskService({ repo: () => repo } as never, scheduler as never);
+    service = new TaskService({ repo: () => repo } as never, scheduler as never, projects as never);
   });
 
   it('puts a task at a new place in its level and numbers the level again', async () => {

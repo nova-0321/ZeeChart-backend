@@ -7,12 +7,9 @@ import {
 import { randomUUID } from 'node:crypto';
 import { RequestTransaction } from '../database/request-transaction.js';
 import { DependencyService } from '../dependencies/dependency.service.js';
-import { ProjectEvent } from '../events/entities/project-event.entity.js';
 import { EventsService } from '../events/events.service.js';
-import { roleIn } from '../projects/project-access.js';
+import { roleIn } from '../members/membership.js';
 import { ProjectsService } from '../projects/projects.service.js';
-import { TaskScheduler } from '../scheduling/task-scheduler.service.js';
-import { Task } from '../tasks/entities/task.entity.js';
 import { TaskService } from '../tasks/task.service.js';
 import type { RestoreResultDto as RestoreResult } from './dto/restore-result.dto.js';
 import { asRevisionDto, type RevisionDto } from './dto/revision.dto.js';
@@ -26,14 +23,10 @@ import {
   type TaskState,
 } from './revision-diff.js';
 import { KEEP_REVISION_DAYS, UNDO_DEPTH } from './history-limits.js';
+import { ROWS } from './rows.js';
 
-/** Where each kind of row is stored. */
-export const TABLES = {
-  project: 'projects',
-  task: 'tasks',
-  event: 'events',
-  link: 'task_dependencies',
-} as const;
+/** A task's type, as TaskService takes it. */
+type TaskType = Parameters<TaskService['changeType']>[1];
 
 /** At most this many revisions in one answer of the history. */
 export const MAX_PAGE = 100;
@@ -64,19 +57,10 @@ export class RevisionsService {
     private readonly events: EventsService,
     private readonly projects: ProjectsService,
     private readonly links: DependencyService,
-    private readonly scheduler: TaskScheduler,
   ) {}
 
   private get revisionRepo() {
     return this.tx.repo(Revision);
-  }
-
-  private get taskRepo() {
-    return this.tx.repo(Task);
-  }
-
-  private get eventRepo() {
-    return this.tx.repo(ProjectEvent);
   }
 
   /**
@@ -134,9 +118,10 @@ export class RevisionsService {
       // Each row that is still there carries its new version (the same number as its revision).
       for (const draft of drafts) {
         if (!draft.after) continue;
-        await manager.query(
-          `UPDATE "${TABLES[draft.entityType]}" SET "version" = $2 WHERE "id" = $1`,
-          [draft.entityId, versions.get(draft.entityId)],
+        await ROWS[draft.entityType].setVersion(
+          manager,
+          draft.entityId,
+          versions.get(draft.entityId)!,
         );
       }
     });
@@ -256,10 +241,10 @@ export class RevisionsService {
   }
 
   private async restoreTask(projectId: string, state: TaskState, skipped: string[]) {
-    const current = await this.taskRepo.findOneBy({ id: state.id });
+    const current = await this.tasks.find(state.id);
     // The group it was in, if it is still there to hold it (and wouldn't hold its own group).
     let parentId = state.parentId;
-    if (parentId && !(await this.canHold(projectId, parentId, state.id))) {
+    if (parentId && !(await this.tasks.canHold(projectId, parentId, state.id))) {
       skipped.push(
         'its group (gone, no longer a group, or in a loop of groups): it stays where it is',
       );
@@ -268,13 +253,13 @@ export class RevisionsService {
 
     if (!current) {
       // Deleted since: made again, with the same id (so its history goes on).
-      const task = this.taskRepo.create({
+      await this.tasks.recreate({
         id: state.id,
         projectId,
         name: state.name,
         description: state.description ?? undefined,
-        type: state.type,
-        priority: state.priority,
+        type: state.type as TaskType,
+        priority: state.priority as 'medium',
         startDate: state.startDate as unknown as Date,
         endDate: (state.type === 'milestone' ? state.startDate : state.endDate) as unknown as Date,
         progress: state.progress,
@@ -282,8 +267,6 @@ export class RevisionsService {
         order: state.order,
         parentId,
       });
-      if (parentId) await this.scheduler.saveAttached(task);
-      else await this.taskRepo.save(task);
       // Its links, where the task at the other end is still there (the same rules as a new link).
       for (const link of state.links ?? []) {
         try {
@@ -302,8 +285,7 @@ export class RevisionsService {
 
     // Still there: checked first, so nothing is half put back.
     if (current.type === 'group' && state.type !== 'group') {
-      const children = await this.taskRepo.countBy({ parentId: current.id });
-      if (children > 0) {
+      if ((await this.tasks.childCount(current.id)) > 0) {
         throw new BadRequestException(
           'This group has tasks in it now. Move them out before restoring it as a task',
         );
@@ -313,7 +295,7 @@ export class RevisionsService {
     // transaction, so the task stays as it was.
     if (current.parentId !== parentId) await this.tasks.setParent(current.id, parentId);
     if (current.type !== state.type) {
-      await this.tasks.changeType(current.id, state.type as Task['type']);
+      await this.tasks.changeType(current.id, state.type as TaskType);
     }
     await this.tasks.update(current.id, {
       name: state.name,
@@ -334,26 +316,10 @@ export class RevisionsService {
       startDate: state.startDate,
       endDate: state.endDate,
     };
-    if (await this.eventRepo.existsBy({ id: state.id })) {
+    if (await this.events.exists(state.id)) {
       await this.events.update(state.id, fields);
     } else {
-      await this.eventRepo.save(this.eventRepo.create({ id: state.id, projectId, ...fields }));
+      await this.events.recreate(state.id, projectId, fields);
     }
-  }
-
-  /**
-   * Whether `parentId` is a group of the project that may hold `taskId` (not inside it). A group
-   * whose chain loops (a loop already in the data) can't: the task stays where it is.
-   */
-  private async canHold(projectId: string, parentId: string, taskId: string) {
-    let node = await this.taskRepo.findOneBy({ id: parentId });
-    if (!node || node.projectId !== projectId || node.type !== 'group') return false;
-    const seen = new Set<string>();
-    while (node) {
-      if (node.id === taskId || seen.has(node.id)) return false;
-      seen.add(node.id);
-      node = node.parentId ? await this.taskRepo.findOneBy({ id: node.parentId }) : null;
-    }
-    return true;
   }
 }

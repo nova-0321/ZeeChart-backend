@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { type EntityManager, QueryFailedError, Repository } from 'typeorm';
 import type { AuthResponseDto, AuthUserDto } from './dto/auth-response.dto.js';
 import type { SignInDto } from './dto/sign-in.dto.js';
 import type { SignUpDto } from './dto/sign-up.dto.js';
@@ -13,6 +13,13 @@ const EMAIL_TAKEN = 'An account with this email already exists';
 // One message for a wrong email and a wrong password: the answer does not tell which emails
 // have accounts.
 const BAD_CREDENTIALS = 'The email or password is incorrect';
+
+/** An account as other domains see it. */
+export interface Account {
+  id: string;
+  name: string;
+  email: string;
+}
 
 const isUniqueViolation = (error: unknown) =>
   error instanceof QueryFailedError && (error.driverError as { code?: string }).code === '23505';
@@ -82,6 +89,34 @@ export class AuthService {
     } catch (error) {
       this.logger.warn(`Could not upgrade the password hash of ${user.id}: ${String(error)}`);
     }
+  }
+
+  // Other domains read accounts here, never from the users table (#55).
+
+  /** The account with this email, or null when no one has signed up with it. */
+  async findByEmail(email: string): Promise<Account | null> {
+    const user = await this.users.findOneBy({ email });
+    return user ? { id: user.id, name: user.name, email: user.email } : null;
+  }
+
+  /**
+   * Whether someone has signed up with this email. With `manager`, read on that transaction's
+   * connection (a caller holding one must not wait for a second: see one-connection.e2e-spec.ts).
+   */
+  hasAccount(email: string, manager?: EntityManager): Promise<boolean> {
+    return (manager?.getRepository(User) ?? this.users).existsBy({ email });
+  }
+
+  /**
+   * What a live connection needs of its account: the name others see, and the token version a
+   * token must carry to be current. null when the account is gone.
+   */
+  async sessionOf(id: string): Promise<{ name: string; tokenVersion: number } | null> {
+    const user = await this.users.findOne({
+      select: { name: true, tokenVersion: true },
+      where: { id },
+    });
+    return user ? { name: user.name, tokenVersion: user.tokenVersion } : null;
   }
 
   async me(id: string): Promise<AuthUserDto> {

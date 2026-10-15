@@ -1,5 +1,4 @@
 import { ApiProperty, OmitType } from '@nestjs/swagger';
-import type { Member } from '../../members/entities/member.entity.js';
 import { MEMBER_ROLES, type MemberRole } from '../../members/member-role.js';
 import { Project } from '../entities/project.entity.js';
 
@@ -23,10 +22,16 @@ export class MyProjectDto extends OmitType(Project, ['tasks', 'members'] as cons
   addedBy: AddedByDto | null;
 }
 
-/** The project of a membership (loaded with `project` and `addedBy`), with that member's place. */
-export const asMyProject = (
-  member: Pick<Member, 'project' | 'role' | 'joinedAt' | 'addedBy'>,
-): MyProjectDto => {
+/** A membership as far as this DTO reads it (loaded with `project` and `addedBy`). */
+interface Membership {
+  project: Project;
+  role: MemberRole;
+  joinedAt: Date;
+  addedBy: AddedByDto | null;
+}
+
+/** The project of a membership, with that member's place. */
+export const asMyProject = (member: Membership): MyProjectDto => {
   const { project, addedBy } = member;
   return {
     // Only the project's own columns (not a relation that happens to be loaded).

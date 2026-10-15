@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { RequestTransaction } from '../database/request-transaction.js';
+import { Member } from '../members/entities/member.entity.js';
 import { Project } from './entities/project.entity.js';
 import { ProjectsService } from './projects.service.js';
 
@@ -9,8 +10,9 @@ import { ProjectsService } from './projects.service.js';
 // (test/ownership.e2e-spec.ts).
 describe('ProjectsService', () => {
   let service: ProjectsService;
-  const projectRepo = { findOneBy: vi.fn(), remove: vi.fn(), update: vi.fn() };
-  const memberRepo = { find: vi.fn(), findOne: vi.fn() };
+  const projectRepo = { findOneBy: vi.fn(), remove: vi.fn(), update: vi.fn(), existsBy: vi.fn() };
+  // Memberships are read through the members domain (membership.ts), on the request's manager.
+  const manager = { find: vi.fn(), findOne: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
@@ -19,7 +21,7 @@ describe('ProjectsService', () => {
         ProjectsService,
         {
           provide: RequestTransaction,
-          useValue: { repo: (entity: unknown) => (entity === Project ? projectRepo : memberRepo) },
+          useValue: { repo: () => projectRepo, manager },
         },
       ],
     }).compile();
@@ -31,7 +33,7 @@ describe('ProjectsService', () => {
 
   it('lists the projects you are a member of, each with your place in it, without relations', async () => {
     const joinedAt = new Date('2026-10-01T09:00:00Z');
-    memberRepo.find.mockResolvedValue([
+    manager.find.mockResolvedValue([
       {
         role: 'editor',
         joinedAt,
@@ -49,19 +51,20 @@ describe('ProjectsService', () => {
         addedBy: { id: 'u2', name: 'Olive' },
       },
     ]);
-    expect(memberRepo.find).toHaveBeenCalledWith(
+    expect(manager.find).toHaveBeenCalledWith(
+      Member,
       expect.objectContaining({ where: { userId: 'u1' } }),
     );
   });
 
   it('findOne is a 404 for someone who is not a member', async () => {
-    memberRepo.findOne.mockResolvedValue(null);
+    manager.findOne.mockResolvedValue(null);
     await expect(service.findOne('p1', 'u1')).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('archive and reopen set the flag and answer the project with your role', async () => {
     projectRepo.update.mockResolvedValue({ affected: 1 });
-    memberRepo.findOne.mockResolvedValue({ role: 'owner', project: launch, addedBy: null });
+    manager.findOne.mockResolvedValue({ role: 'owner', project: launch, addedBy: null });
 
     await expect(service.archive('p1', 'u1')).resolves.toMatchObject({ role: 'owner' });
     expect(projectRepo.update).toHaveBeenCalledWith({ id: 'p1' }, { archived: true });
@@ -72,5 +75,48 @@ describe('ProjectsService', () => {
   it('archive is a 404 for a project that does not exist', async () => {
     projectRepo.update.mockResolvedValue({ affected: 0 });
     await expect(service.archive('p1', 'u1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  // Tasks and events ask this before adding a row to a project (#55).
+  it('exists says whether that project is there', async () => {
+    projectRepo.existsBy.mockImplementation(({ id }: { id: string }) =>
+      Promise.resolve(id === 'p1'),
+    );
+    await expect(service.exists('p1')).resolves.toBe(true);
+    await expect(service.exists('p2')).resolves.toBe(false);
+  });
+
+  // MembersService runs these in its own transactions, on its manager (#55).
+  describe('for member changes', () => {
+    const query = { setLock: vi.fn(), where: vi.fn(), getOne: vi.fn() };
+    const manager = { createQueryBuilder: vi.fn(), findOneBy: vi.fn() };
+
+    beforeEach(() => {
+      query.setLock.mockReturnValue(query);
+      query.where.mockReturnValue(query);
+      manager.createQueryBuilder.mockReturnValue(query);
+    });
+
+    it("lockForUpdate holds the project's row (FOR UPDATE) on that manager", async () => {
+      query.getOne.mockResolvedValue(launch);
+      await service.lockForUpdate(manager as never, 'p1');
+      expect(manager.createQueryBuilder).toHaveBeenCalledWith(Project, 'project');
+      expect(query.setLock).toHaveBeenCalledWith('pessimistic_write');
+      expect(query.where).toHaveBeenCalledWith('project.id = :id', { id: 'p1' });
+    });
+
+    it('lockForUpdate is a 404 for a project that is gone', async () => {
+      query.getOne.mockResolvedValue(null);
+      await expect(service.lockForUpdate(manager as never, 'p1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('assertNewOwnerNameFree is a 404 for a project that is gone', async () => {
+      manager.findOneBy.mockResolvedValue(null);
+      await expect(
+        service.assertNewOwnerNameFree(manager as never, 'p1', 'u2'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
   });
 });

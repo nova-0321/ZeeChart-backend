@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DatabaseModule } from '../database/database.module.js';
+import { ProjectsModule } from '../projects/projects.module.js';
 import { ProjectEvent } from './entities/project-event.entity.js';
 import { EventsController } from './events.controller.js';
 import { EventsService } from './events.service.js';
@@ -13,6 +14,8 @@ import { EventsService } from './events.service.js';
     // AuthGuard (and the JwtService it needs).
     AuthModule,
     TypeOrmModule.forFeature([ProjectEvent]),
+    // Whether an event's project exists (ProjectsService).
+    ProjectsModule,
   ],
   controllers: [EventsController],
   providers: [EventsService],
