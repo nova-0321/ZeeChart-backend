@@ -54,3 +54,5 @@ Shared pieces: `common/` (error envelope, validation, rate limits), `config/`, `
 - `docs/database-flow.md`: how a request goes through module, controller, service and database.
 - `docs/conflicts.md`: two people editing the same thing (`If-Match`, the 409 answer).
 - `docs/realtime.md`: the live connection, rooms and messages.
+- `docs/api-conventions.md`: how routes are named and what they answer (status codes, route style,
+  deprecated routes).

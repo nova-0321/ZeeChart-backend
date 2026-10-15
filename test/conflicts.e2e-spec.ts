@@ -252,11 +252,11 @@ describe('Conflicts (e2e)', () => {
     await as(olive, http().post(`/projects/${projectId}/invitations`))
       .send({ email: owner2.email, role: 'owner' })
       .expect(201);
-    await as(owner2, http().patch(`/projects/${projectId}/archive`)).expect(200);
-    const archiveRefused = await as(olive, http().patch(`/projects/${projectId}/reopen`)).set(
-      'If-Match',
-      '1',
-    );
+    await as(owner2, http().patch(`/projects/${projectId}`).send({ archived: true })).expect(200);
+    const archiveRefused = await as(
+      olive,
+      http().patch(`/projects/${projectId}`).send({ archived: false }),
+    ).set('If-Match', '1');
     expect(archiveRefused.status).toBe(409);
     expect((archiveRefused.body as ConflictBody).details.fields).toEqual(['archived']);
   });

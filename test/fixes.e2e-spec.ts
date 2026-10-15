@@ -6,6 +6,9 @@ import { AppModule } from '../src/app.module.js';
 import { deleteTestAccounts } from './cleanup.js';
 import { createValidationPipe } from '../src/common/validation.js';
 
+/** An index past the end of any list: /move puts the task last (as the removed /parent did). */
+const LAST = 10_000;
+
 // Fixes from the review of the API (bad input that gave 500s, undo / restore edge cases, members
 // leaving, scheduling rules).
 
@@ -168,7 +171,9 @@ describe('Fixes (e2e)', () => {
 
   it('a new project has nothing to undo (making it is not undone)', async () => {
     const { owner, projectId } = await setUp();
-    expect((await as(owner, http().get(`/projects/${projectId}/undo`)).expect(200)).body).toEqual({
+    expect(
+      (await as(owner, http().get(`/projects/${projectId}/undo-state`)).expect(200)).body,
+    ).toEqual({
       undo: null,
       redo: null,
     });
@@ -205,7 +210,7 @@ describe('Fixes (e2e)', () => {
       startDate: '2026-01-10',
       endDate: '2026-01-15',
     }).expect(201);
-    await as(owner, http().post(`/projects/${projectId}/undo`)).expect(201);
+    await as(owner, http().post(`/projects/${projectId}/undo`)).expect(200);
     const tasks = await tasksOf(owner, projectId);
     const g = tasks.find((t) => t.id === group.id)!;
     const c2 = tasks.find((t) => t.name === 'c2')!;
@@ -262,7 +267,7 @@ describe('Fixes (e2e)', () => {
     const history = (await as(owner, http().get(`/projects/${projectId}/revisions`)).expect(200))
       .body as { id: string; entityId: string; version: number }[];
     const created = history.find((r) => r.entityId === task.id && r.version === 1)!;
-    await as(owner, http().post(`/revisions/${created.id}/restore`)).expect(201);
+    await as(owner, http().post(`/revisions/${created.id}/restore`)).expect(200);
     expect((await tasksOf(owner, projectId)).find((t) => t.id === task.id)!.description).toBeNull();
   });
 
@@ -273,8 +278,8 @@ describe('Fixes (e2e)', () => {
     await newTask(owner, projectId, { name: 'Keep', parentId: group.id }).expect(201);
     const task = (await newTask(owner, projectId, { name: 'orig', parentId: group.id }).expect(201))
       .body as TaskBody;
-    await as(owner, http().patch(`/tasks/${task.id}/parent`))
-      .send({ parentId: null })
+    await as(owner, http().patch(`/tasks/${task.id}/move`))
+      .send({ parentId: null, index: LAST })
       .expect(200);
     await as(owner, http().patch(`/tasks/${task.id}`))
       .send({ name: 'renamed' })
@@ -349,12 +354,13 @@ describe('Fixes (e2e)', () => {
       .expect(200);
     expect(await orderOf(owner, projectId)).toBe('t a c d b');
     // Olive's undo: t back at the end (its place then), b stays where Bob put it.
-    await as(owner, http().post(`/projects/${projectId}/undo`)).expect(201);
+    await as(owner, http().post(`/projects/${projectId}/undo`)).expect(200);
     expect(await orderOf(owner, projectId)).toBe('a c d b t');
     // And redo puts it first again; the next undo goes on to what came before.
-    await as(owner, http().post(`/projects/${projectId}/redo`)).expect(201);
+    await as(owner, http().post(`/projects/${projectId}/redo`)).expect(200);
     expect(await orderOf(owner, projectId)).toBe('t a c d b');
-    const state = (await as(owner, http().get(`/projects/${projectId}/undo`)).expect(200)).body as {
+    const state = (await as(owner, http().get(`/projects/${projectId}/undo-state`)).expect(200))
+      .body as {
       undo: { summary: string } | null;
     };
     expect(state.undo?.summary).toMatch(/Moved in the list/);

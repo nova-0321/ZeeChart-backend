@@ -17,7 +17,12 @@ import { deleteLinksOf, writeLink } from '../../dependencies/link-rows.js';
 import { deleteEventsExcept, writeEvent } from '../../events/event-rows.js';
 import { ownedNamesLike, ownerIdsOf } from '../../members/membership.js';
 import { writeProjectFields } from '../../projects/project-rows.js';
-import { deleteTasksExcept, setTaskParent, writeTask } from '../../tasks/task-rows.js';
+import {
+  deleteTasksExcept,
+  numberAllLevels,
+  setTaskParent,
+  writeTask,
+} from '../../tasks/task-rows.js';
 
 /** An auto version is saved after a change when the newest version is older than this. */
 export const AUTO_EVERY_MS = 10 * 60 * 1000;
@@ -260,6 +265,7 @@ export class VersionsService {
           await setTaskParent(manager, ids.get(task.id)!, ids.get(task.parentId)!);
         }
       }
+      await numberAllLevels(manager, project.id);
       for (const event of content.events) {
         await writeEvent(manager, project.id, { ...event, id: randomUUID() });
       }
@@ -311,6 +317,8 @@ export class VersionsService {
     for (const task of content.tasks) {
       if (task.parentId) await setTaskParent(manager, task.id, task.parentId);
     }
+    // Each level numbered 1, 2, 3... (a version saved before levels were kept so may have gaps).
+    await numberAllLevels(manager, projectId);
     for (const event of content.events) await writeEvent(manager, projectId, event);
     for (const link of content.links) await writeLink(manager, projectId, link);
     if (withProjectFields) {

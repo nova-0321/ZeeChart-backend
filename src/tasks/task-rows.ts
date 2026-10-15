@@ -129,27 +129,27 @@ export async function deleteTasksExcept(manager: EntityManager, projectId: strin
 }
 
 /**
- * In each list level (a group's tasks, or the top level: null), rows on the same place are
- * numbered again from 1, in their order, the ones in `first` before the others on the same place.
- * Levels with no clash are left as they are.
+ * Each list level (a group's tasks, or the top level: null) numbered 1, 2, 3... in its order, with
+ * no gap (a task gone) and no two on one place (a task made again): the ones in `first` before the
+ * others on the same place. A level already numbered so is left as it is.
  */
-export async function renumberClashes(
+export async function numberLevels(
   manager: EntityManager,
   projectId: string,
-  levels: Set<string | null>,
-  first: Set<string>,
+  levels: Iterable<string | null>,
+  first: Set<string> = new Set(),
 ) {
-  for (const parentId of levels) {
-    const rows = await manager.query<{ id: string; order: number }[]>(
-      `SELECT "id", "order" FROM "tasks"
+  for (const parentId of new Set(levels)) {
+    const rows = await manager.query<{ id: string; order: number; createdAt: Date }[]>(
+      `SELECT "id", "order", "createdAt" FROM "tasks"
         WHERE "projectId" = $1 AND "parentId" IS NOT DISTINCT FROM $2::uuid`,
       [projectId, parentId],
     );
-    if (new Set(rows.map((row) => row.order)).size === rows.length) continue;
     rows.sort(
       (a, b) =>
         a.order - b.order ||
         Number(first.has(b.id)) - Number(first.has(a.id)) ||
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() ||
         (a.id < b.id ? -1 : 1),
     );
     for (const [index, row] of rows.entries()) {
@@ -158,6 +158,22 @@ export async function renumberClashes(
       }
     }
   }
+}
+
+/**
+ * Every level of the project numbered as numberLevels does (a whole version put back: one saved
+ * before levels were kept numbered may have gaps). One statement; rows already right are not
+ * written.
+ */
+export async function numberAllLevels(manager: EntityManager, projectId: string) {
+  await manager.query(
+    `UPDATE "tasks" t SET "order" = n."place"
+       FROM (SELECT "id", ROW_NUMBER() OVER (
+               PARTITION BY "parentId" ORDER BY "order", "createdAt", "id") AS "place"
+               FROM "tasks" WHERE "projectId" = $1) n
+      WHERE t."id" = n."id" AND t."order" <> n."place"`,
+    [projectId],
+  );
 }
 
 /**

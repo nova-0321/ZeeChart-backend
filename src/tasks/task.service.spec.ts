@@ -20,50 +20,92 @@ const formBody = (extra: Partial<TaskDto> = {}) =>
     ...extra,
   }) as TaskDto;
 
+/** A level's row as the service reads it. */
+const row = (id: string, order: number, parentId: string | null = null) => ({
+  id,
+  order,
+  parentId,
+  projectId: PROJECT_ID,
+  type: 'task',
+});
+
+/** The orders written to the other rows of a level, by id. */
+const writtenOrders = (update: { mock: { calls: unknown[][] } }) =>
+  Object.fromEntries(
+    update.mock.calls
+      .filter((call) => (call[2] as { order?: number }).order !== undefined)
+      .map((call) => [(call[1] as { id: string }).id, (call[2] as { order: number }).order]),
+  );
+
 describe('TaskService.create', () => {
-  const query = { select: vi.fn(), where: vi.fn(), getRawOne: vi.fn() };
+  const manager = { save: vi.fn(), update: vi.fn() };
   const repo = {
     create: vi.fn(),
-    save: vi.fn(),
-    createQueryBuilder: vi.fn(),
+    find: vi.fn(),
     findOneByOrFail: vi.fn(),
+    manager: { transaction: vi.fn() },
   };
   const scheduler = { saveAttached: vi.fn() };
   let service: TaskService;
 
   beforeEach(() => {
     vi.resetAllMocks();
-    query.select.mockReturnValue(query);
-    query.where.mockReturnValue(query);
-    query.getRawOne.mockResolvedValue({ max: null });
-    repo.createQueryBuilder.mockReturnValue(query);
-    repo.create.mockImplementation((values: object) => values);
-    repo.save.mockImplementation((task: object) => Promise.resolve({ id: 't1', ...task }));
-    projects.exists.mockResolvedValue(true);
-    scheduler.saveAttached.mockImplementation((task: object) =>
+    repo.create.mockImplementation((values: object) => ({ ...values }));
+    repo.find.mockResolvedValue([]);
+    repo.manager.transaction.mockImplementation((work: (m: typeof manager) => unknown) =>
+      work(manager),
+    );
+    manager.save.mockImplementation((_entity: unknown, task: object) =>
       Promise.resolve({ id: 't1', ...task }),
+    );
+    projects.exists.mockResolvedValue(true);
+    scheduler.saveAttached.mockImplementation(
+      async (task: object, _old: unknown, also?: (m: typeof manager) => Promise<void>) => {
+        if (also) await also(manager);
+        return { id: 't1', ...task };
+      },
     );
     service = new TaskService({ repo: () => repo } as never, scheduler as never, projects as never);
   });
 
   it('gives a task from the form progress 0 and the first order, so the insert has every required column', async () => {
     await service.create(formBody());
-    expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ progress: 0, order: 1 }));
+    expect(manager.save).toHaveBeenCalledWith(
+      Task,
+      expect.objectContaining({ progress: 0, order: 1 }),
+    );
   });
 
-  it('puts a new task after the project’s last one', async () => {
-    query.getRawOne.mockResolvedValue({ max: 4 });
-    await service.create(formBody());
-    expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ order: 5 }));
-    expect(query.where).toHaveBeenCalledWith('task.projectId = :projectId', {
-      projectId: PROJECT_ID,
-    });
+  it('puts a new task last in its own level, whatever the numbers in other levels', async () => {
+    repo.findOneByOrFail.mockResolvedValue({ id: GROUP_ID, type: 'group', projectId: PROJECT_ID });
+    repo.find.mockResolvedValue([row('k1', 1, GROUP_ID), row('k2', 2, GROUP_ID)]);
+    await service.create(formBody({ parentId: GROUP_ID }));
+    expect(repo.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { projectId: PROJECT_ID, parentId: GROUP_ID } }),
+    );
+    expect(scheduler.saveAttached).toHaveBeenCalledWith(
+      expect.objectContaining({ order: 3 }),
+      null,
+      expect.any(Function),
+    );
+    expect(manager.update).not.toHaveBeenCalled();
   });
 
-  it('keeps a progress and order the caller chose, without asking for the next order', async () => {
-    await service.create(formBody({ progress: 40, order: 7 }));
-    expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ progress: 40, order: 7 }));
-    expect(repo.createQueryBuilder).not.toHaveBeenCalled();
+  it('takes an order as its place in the level, and moves the ones from there down (no clash)', async () => {
+    repo.find.mockResolvedValue([row('a', 1), row('b', 2), row('c', 3)]);
+    await service.create(formBody({ progress: 40, order: 2 }));
+    expect(manager.save).toHaveBeenCalledWith(
+      Task,
+      expect.objectContaining({ progress: 40, order: 2 }),
+    );
+    expect(writtenOrders(manager.update)).toEqual({ b: 3, c: 4 });
+  });
+
+  it('puts an order past the end of the level last (no gap)', async () => {
+    repo.find.mockResolvedValue([row('a', 1)]);
+    await service.create(formBody({ order: 40 }));
+    expect(manager.save).toHaveBeenCalledWith(Task, expect.objectContaining({ order: 2 }));
+    expect(manager.update).not.toHaveBeenCalled();
   });
 
   it('rejects an end date before the start date and saves nothing', async () => {
@@ -72,7 +114,7 @@ describe('TaskService.create', () => {
         formBody({ startDate: '2026-10-09' as never, endDate: '2026-10-07' as never }),
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(repo.save).not.toHaveBeenCalled();
+    expect(manager.save).not.toHaveBeenCalled();
   });
 
   it('answers 404 for a project that does not exist, and saves nothing', async () => {
@@ -80,7 +122,7 @@ describe('TaskService.create', () => {
     await expect(service.create(formBody())).rejects.toBeInstanceOf(NotFoundException);
     // Asked of the projects domain, not read from its table.
     expect(projects.exists).toHaveBeenCalledWith(PROJECT_ID);
-    expect(repo.save).not.toHaveBeenCalled();
+    expect(manager.save).not.toHaveBeenCalled();
   });
 
   it('only allows a group as the parent', async () => {
@@ -88,37 +130,72 @@ describe('TaskService.create', () => {
     await expect(service.create(formBody({ parentId: GROUP_ID }))).rejects.toThrow(
       'Parent must be a group',
     );
-    expect(repo.save).not.toHaveBeenCalled();
-  });
-
-  it('accepts a parent group of the same project', async () => {
-    repo.findOneByOrFail.mockResolvedValue({ id: GROUP_ID, type: 'group', projectId: PROJECT_ID });
-    await service.create(formBody({ parentId: GROUP_ID }));
-    expect(scheduler.saveAttached).toHaveBeenCalledWith(
-      expect.objectContaining({ parentId: GROUP_ID }),
-    );
+    expect(manager.save).not.toHaveBeenCalled();
+    expect(scheduler.saveAttached).not.toHaveBeenCalled();
   });
 
   it('saves a top-level task directly, and one in a group through the scheduler so the group stretches', async () => {
     await service.create(formBody());
-    expect(repo.save).toHaveBeenCalledTimes(1);
+    expect(manager.save).toHaveBeenCalledTimes(1);
     expect(scheduler.saveAttached).not.toHaveBeenCalled();
     repo.findOneByOrFail.mockResolvedValue({ id: GROUP_ID, type: 'group', projectId: PROJECT_ID });
     await service.create(formBody({ parentId: GROUP_ID }));
-    expect(repo.save).toHaveBeenCalledTimes(1);
-    expect(scheduler.saveAttached).toHaveBeenCalledTimes(1);
+    expect(manager.save).toHaveBeenCalledTimes(1);
+    expect(scheduler.saveAttached).toHaveBeenCalledWith(
+      expect.objectContaining({ parentId: GROUP_ID }),
+      null,
+      expect.any(Function),
+    );
+  });
+});
+
+describe('TaskService.recreate', () => {
+  const manager = { save: vi.fn(), update: vi.fn() };
+  const repo = { create: vi.fn(), find: vi.fn(), manager: { transaction: vi.fn() } };
+  let service: TaskService;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    repo.create.mockImplementation((values: object) => ({ ...values }));
+    repo.manager.transaction.mockImplementation((work: (m: typeof manager) => unknown) =>
+      work(manager),
+    );
+    manager.save.mockImplementation((_entity: unknown, task: object) => Promise.resolve(task));
+    service = new TaskService({ repo: () => repo } as never, {} as never, projects as never);
+  });
+
+  it('puts a deleted task back at its place, the others moved down', async () => {
+    repo.find.mockResolvedValue([row('a', 1), row('c', 2)]);
+    await service.recreate({ id: 'b', projectId: PROJECT_ID, parentId: null, order: 2 });
+    expect(manager.save).toHaveBeenCalledWith(Task, expect.objectContaining({ id: 'b', order: 2 }));
+    expect(writtenOrders(manager.update)).toEqual({ c: 3 });
   });
 });
 
 describe('TaskService.setParent', () => {
-  const repo = { findOneByOrFail: vi.fn(), save: vi.fn(), findOneBy: vi.fn() };
+  const manager = { save: vi.fn(), update: vi.fn() };
+  const repo = {
+    findOneByOrFail: vi.fn(),
+    findOneBy: vi.fn(),
+    find: vi.fn(),
+    manager: { transaction: vi.fn() },
+  };
   const scheduler = { saveAttached: vi.fn() };
   let service: TaskService;
 
   beforeEach(() => {
     vi.resetAllMocks();
-    repo.save.mockImplementation((task: object) => Promise.resolve(task));
-    scheduler.saveAttached.mockImplementation((task: object) => Promise.resolve(task));
+    repo.find.mockResolvedValue([]);
+    repo.manager.transaction.mockImplementation((work: (m: typeof manager) => unknown) =>
+      work(manager),
+    );
+    manager.save.mockImplementation((_entity: unknown, task: object) => Promise.resolve(task));
+    scheduler.saveAttached.mockImplementation(
+      async (task: object, _old: unknown, also?: (m: typeof manager) => Promise<void>) => {
+        if (also) await also(manager);
+        return task;
+      },
+    );
     service = new TaskService({ repo: () => repo } as never, scheduler as never, projects as never);
   });
 
@@ -130,8 +207,9 @@ describe('TaskService.setParent', () => {
     expect(scheduler.saveAttached).toHaveBeenCalledWith(
       expect.objectContaining({ id: 't1', parentId: GROUP_ID }),
       null,
+      expect.any(Function),
     );
-    expect(repo.save).not.toHaveBeenCalled();
+    expect(manager.save).not.toHaveBeenCalled();
   });
 
   it('takes a task out of its group through the scheduler too, so the group shrinks', async () => {
@@ -144,15 +222,30 @@ describe('TaskService.setParent', () => {
     expect(scheduler.saveAttached).toHaveBeenCalledWith(
       expect.objectContaining({ id: 't1', parentId: null }),
       GROUP_ID,
+      expect.any(Function),
     );
-    expect(repo.save).not.toHaveBeenCalled();
+    expect(manager.save).not.toHaveBeenCalled();
   });
 
-  it('saves a top-level task that stays top-level with a plain save', async () => {
+  it('saves a top-level task that stays top-level without the scheduler', async () => {
     repo.findOneByOrFail.mockResolvedValueOnce({ id: 't1', projectId: PROJECT_ID, parentId: null });
     await service.setParent('t1', null);
-    expect(repo.save).toHaveBeenCalledTimes(1);
+    expect(manager.save).toHaveBeenCalledTimes(1);
     expect(scheduler.saveAttached).not.toHaveBeenCalled();
+  });
+
+  it('puts it at the place asked in the group, and closes up the level it left', async () => {
+    repo.findOneByOrFail
+      .mockResolvedValueOnce(row('t', 2))
+      .mockResolvedValueOnce({ id: GROUP_ID, type: 'group', projectId: PROJECT_ID });
+    repo.find
+      // The level it leaves (the top level): a, t, c.
+      .mockResolvedValueOnce([row('a', 1), row('t', 2), row('c', 3)])
+      // The group: k1, k2.
+      .mockResolvedValueOnce([row('k1', 1, GROUP_ID), row('k2', 2, GROUP_ID)]);
+    const saved = await service.setParent('t', GROUP_ID, 1);
+    expect(saved).toMatchObject({ id: 't', parentId: GROUP_ID, order: 2 });
+    expect(writtenOrders(manager.update)).toEqual({ c: 2, k2: 3 });
   });
 });
 
@@ -267,14 +360,29 @@ describe('TaskService.remove', () => {
   const repo = { findOneByOrFail: vi.fn(), manager: { transaction: vi.fn() } };
   const scheduler = { settle: vi.fn() };
   let service: TaskService;
-  const row = (id: string, order: number) => ({ id, order });
 
   beforeEach(() => {
     vi.resetAllMocks();
+    manager.find.mockResolvedValue([]);
     repo.manager.transaction.mockImplementation((work: (m: typeof manager) => unknown) =>
       work(manager),
     );
     service = new TaskService({ repo: () => repo } as never, scheduler as never, projects as never);
+  });
+
+  it('closes up the level a deleted task was in (no gap where it was)', async () => {
+    // Top level: a1, t2, b3, c4; t holds nothing.
+    repo.findOneByOrFail.mockResolvedValue({
+      id: 't',
+      projectId: PROJECT_ID,
+      parentId: null,
+      order: 2,
+    });
+    manager.find
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([row('a', 1), row('b', 3), row('c', 4)]);
+    await service.remove('t');
+    expect(writtenOrders(manager.update)).toEqual({ b: 2, c: 3 });
   });
 
   it('fits the group the task was in to the tasks that are left, in the same transaction', async () => {
@@ -353,13 +461,6 @@ describe('TaskService.move', () => {
   };
   const scheduler = { saveAttached: vi.fn() };
   let service: TaskService;
-  const row = (id: string, order: number, parentId: string | null = null) => ({
-    id,
-    order,
-    parentId,
-    projectId: PROJECT_ID,
-    type: 'task',
-  });
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -429,5 +530,17 @@ describe('TaskService.move', () => {
       { type: 'group' },
     );
     expect(saved).toMatchObject({ id: 't', parentId: GROUP_ID, order: 1 });
+  });
+
+  it('closes up the level it leaves when it goes into another group', async () => {
+    repo.findOneByOrFail
+      .mockResolvedValueOnce(row('t', 2))
+      .mockResolvedValueOnce({ id: GROUP_ID, type: 'group', projectId: PROJECT_ID });
+    repo.find
+      .mockResolvedValueOnce([row('a', 1), row('t', 2), row('c', 3), row('d', 4)])
+      .mockResolvedValueOnce([row('k', 1, GROUP_ID)]);
+    const saved = await service.move('t', GROUP_ID, 0);
+    expect(saved).toMatchObject({ id: 't', parentId: GROUP_ID, order: 1 });
+    expect(writtenOrders(manager.update)).toEqual({ c: 2, d: 3, k: 2 });
   });
 });

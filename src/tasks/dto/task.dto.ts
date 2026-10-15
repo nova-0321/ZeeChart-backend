@@ -62,7 +62,10 @@ export class TaskDto {
   @Matches(/^#[0-9a-fA-F]{6}$/, { message: 'color must be a hex color like #2a78d6' })
   color: string;
 
-  /** Position among the project's tasks. Defaults to the end of the list. */
+  /**
+   * Its place in its level (the group's tasks, or the top level): 1 first, the tasks from there
+   * moved down. Past the end, or none: the last. Every level is numbered 1, 2, 3... (#57).
+   */
   @IsOptional()
   @IsInt()
   @Min(0)

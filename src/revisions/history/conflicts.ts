@@ -57,12 +57,8 @@ export function targetOf(entity: RealtimeEntity, request: Request): Target | nul
   const route = String((request.route as { path?: string } | undefined)?.path ?? '');
   if (request.method === 'DELETE') return { entityType, id, fields: ALL[entityType] };
   if (request.method !== 'PATCH') return null;
-  if (route.endsWith('/parent')) return { entityType, id, fields: ['parentId'] };
   if (route.endsWith('/move')) return { entityType, id, fields: ['parentId', 'order'] };
   if (route.endsWith('/type')) return { entityType, id, fields: ['type'] };
-  if (route.endsWith('/archive') || route.endsWith('/reopen')) {
-    return { entityType, id, fields: ['archived'] };
-  }
   const sent = Object.keys((request.body as Record<string, unknown> | undefined) ?? {});
   return { entityType, id, fields: ALL[entityType].filter((field) => sent.includes(field)) };
 }

@@ -36,9 +36,7 @@ const TAGS = [
 /** The writes RevisionInterceptor checks (conflicts.ts targetOf): changing or deleting a row. */
 const isChecked = ({ path, method }: { path: string; method: string }) =>
   (method === 'patch' || method === 'delete') &&
-  /^\/(tasks|events|projects|dependencies)\/\{id\}(\/(parent|move|type|archive|reopen))?$/.test(
-    path,
-  );
+  /^\/(tasks|events|projects|dependencies)\/\{id\}(\/(move|type))?$/.test(path);
 const takesIfMatch = (operation: Operation) =>
   (operation.parameters ?? []).some((p) => p.in === 'header' && p.name === 'If-Match');
 
@@ -56,7 +54,7 @@ describe('the API docs', () => {
 
   it('say which writes take If-Match, and their 409 (exactly those)', () => {
     const checked = operations.filter(isChecked);
-    expect(checked.length).toBe(13);
+    expect(checked.length).toBe(10);
     for (const { path, method, operation } of checked) {
       expect(takesIfMatch(operation), `${method} ${path}`).toBe(true);
       expect(

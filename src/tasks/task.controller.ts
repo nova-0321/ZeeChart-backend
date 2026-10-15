@@ -24,7 +24,6 @@ import {
 import { Broadcast } from '../realtime/broadcast.decorator.js';
 import { ChangeTypeDto } from './dto/change-type.dto.js';
 import { MoveTaskDto } from './dto/move-task.dto.js';
-import { SetParentDto } from './dto/set-parent.dto.js';
 import { TaskDto } from './dto/task.dto.js';
 import { UpdateTaskDto } from './dto/update-task.dto.js';
 import { Task } from './entities/task.entity.js';
@@ -75,19 +74,11 @@ export class TaskController {
     return this.taskService.remove(id);
   }
 
-  /** Move a task under a group, or send { "parentId": null } to make it top-level. */
-  @Patch(':id/parent')
-  @IfMatch()
-  @ProjectAccess('editor', projectOfRow(Task))
-  @AnswerWithChanges('Task')
-  @Broadcast({ entity: 'task', action: 'update', project: projectOfRow(Task) })
-  setParent(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetParentDto) {
-    return this.taskService.setParent(id, dto.parentId);
-  }
-
   /**
    * Put a task at a place in the list: under a group (or at the top level, with null) and at an
-   * index among the tasks there. The tasks of that level are numbered again to keep that order.
+   * index among the tasks there (past the end: last). The tasks of that level are numbered again to
+   * keep that order. The one way to change a task's group: dropped on a plain task, that task
+   * becomes a group holding it; a milestone holds nothing.
    */
   @Patch(':id/move')
   @IfMatch()

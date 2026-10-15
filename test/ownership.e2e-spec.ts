@@ -6,6 +6,9 @@ import { AppModule } from '../src/app.module.js';
 import { deleteTestAccounts } from './cleanup.js';
 import { createValidationPipe } from '../src/common/validation.js';
 
+/** An index past the end of any list: /move puts the task last (as the removed /parent did). */
+const LAST = 10_000;
+
 // Every project has an owner, and only its members see it and everything in it. To anyone else it
 // does not exist (404, the same answer as for a made-up id). Roles inside a project are in
 // members.e2e-spec.ts.
@@ -120,8 +123,8 @@ describe('Project ownership (e2e)', () => {
     const tries: [string, () => request.Test][] = [
       ['GET project', () => as(bob, http().get(`/projects/${project.id}`))],
       ['rename', () => as(bob, http().patch(`/projects/${project.id}`)).send({ name: 'Mine now' })],
-      ['archive', () => as(bob, http().patch(`/projects/${project.id}/archive`))],
-      ['reopen', () => as(bob, http().patch(`/projects/${project.id}/reopen`))],
+      ['archive', () => as(bob, http().patch(`/projects/${project.id}`).send({ archived: true }))],
+      ['reopen', () => as(bob, http().patch(`/projects/${project.id}`).send({ archived: false }))],
       ['delete project', () => as(bob, http().delete(`/projects/${project.id}`))],
       ['list tasks', () => as(bob, http().get(`/tasks?projectId=${project.id}`))],
       [
@@ -138,11 +141,16 @@ describe('Project ownership (e2e)', () => {
       ['edit a task', () => as(bob, http().patch(`/tasks/${first.id}`)).send({ name: 'x' })],
       [
         'move a task',
-        () => as(bob, http().patch(`/tasks/${first.id}/move`)).send({ parentId: null, index: 0 }),
+        () =>
+          as(bob, http().patch(`/tasks/${first.id}/move`)).send({
+            parentId: null,
+            index: 0,
+          }),
       ],
       [
         'regroup a task',
-        () => as(bob, http().patch(`/tasks/${first.id}/parent`)).send({ parentId: null }),
+        () =>
+          as(bob, http().patch(`/tasks/${first.id}/move`)).send({ parentId: null, index: LAST }),
       ],
       [
         'retype a task',
@@ -227,9 +235,9 @@ describe('Project ownership (e2e)', () => {
     await as(ada, http().patch(`/events/${event.id}`))
       .send({ name: 'Demo day' })
       .expect(200);
-    await as(ada, http().patch(`/projects/${project.id}/archive`)).expect(200);
-    await as(ada, http().patch(`/projects/${project.id}/reopen`)).expect(200);
-    await as(ada, http().delete(`/projects/${project.id}`)).expect(200);
+    await as(ada, http().patch(`/projects/${project.id}`).send({ archived: true })).expect(200);
+    await as(ada, http().patch(`/projects/${project.id}`).send({ archived: false })).expect(200);
+    await as(ada, http().delete(`/projects/${project.id}`)).expect(204);
     await as(ada, http().get(`/projects/${project.id}`)).expect(404);
   });
 

@@ -272,7 +272,7 @@ describe('Invitations (e2e)', () => {
     const { owner, projectId } = await setUp();
     const { token } = (await invite(owner, projectId, { email: newEmail() }).expect(201))
       .body as InviteBody;
-    await as(owner, http().delete(`/projects/${projectId}`)).expect(200);
+    await as(owner, http().delete(`/projects/${projectId}`)).expect(204);
     await preview(token!).expect(404);
   });
 });

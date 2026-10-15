@@ -8,8 +8,7 @@ import { ProjectsService } from './projects.service.js';
 describe('ProjectsController', () => {
   let controller: ProjectsController;
   const service = {
-    archive: vi.fn(),
-    reopen: vi.fn(),
+    update: vi.fn(),
     create: vi.fn(),
     findAll: vi.fn(),
   };
@@ -36,14 +35,16 @@ describe('ProjectsController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('archive and reopen delegate to the service', async () => {
-    service.archive.mockResolvedValue({ id: 'p1', archived: true });
-    service.reopen.mockResolvedValue({ id: 'p1', archived: false });
+  it('archiving and reopening go through PATCH, as any other change of the project (#57)', async () => {
+    service.update.mockResolvedValue({ id: 'p1', archived: true });
 
-    await expect(controller.archive('p1', 'user-1')).resolves.toMatchObject({ archived: true });
-    await expect(controller.reopen('p1', 'user-1')).resolves.toMatchObject({ archived: false });
-    expect(service.archive).toHaveBeenCalledWith('p1', 'user-1');
-    expect(service.reopen).toHaveBeenCalledWith('p1', 'user-1');
+    await expect(controller.update('p1', { archived: true }, 'user-1')).resolves.toMatchObject({
+      archived: true,
+    });
+    expect(service.update).toHaveBeenCalledWith('p1', { archived: true }, 'user-1');
+    // There is no other way to: the old /archive and /reopen routes are gone.
+    expect('archive' in controller).toBe(false);
+    expect('reopen' in controller).toBe(false);
   });
 
   it('a new project belongs to whoever creates it, and the list is theirs only', async () => {

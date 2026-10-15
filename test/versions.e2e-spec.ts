@@ -167,14 +167,14 @@ describe('Versions (e2e)', () => {
 
     // Back to v1 (empty): everything goes, and what was there is kept first.
     const v1 = (await versions(owner, projectId)).find((v) => v.number === 1)!;
-    const result = (await as(owner, http().post(`/versions/${v1.id}/restore`)).expect(201))
+    const result = (await as(owner, http().post(`/versions/${v1.id}/restore`)).expect(200))
       .body as { version: number; savedAs: number | null };
     // The full state was already a version (just saved): not saved again.
     expect(result).toEqual({ version: 1, savedAs: null });
     expect(await tasksOf(owner, projectId)).toEqual([]);
 
     // And back to the full one.
-    await as(owner, http().post(`/versions/${full.id}/restore`)).expect(201);
+    await as(owner, http().post(`/versions/${full.id}/restore`)).expect(200);
     const after = await tasksOf(owner, projectId);
     const shape = (tasks: TaskBody[]) =>
       tasks.map((t) => [t.id, t.name, t.parentId, t.order]).sort();
@@ -199,12 +199,12 @@ describe('Versions (e2e)', () => {
     await newTask(owner, projectId, { name: 'Saved' }); // v2 (a new project's first change)
     await newTask(owner, projectId, { name: 'Unsaved work' });
     const v1 = (await versions(owner, projectId)).find((v) => v.number === 1)!;
-    const result = (await as(owner, http().post(`/versions/${v1.id}/restore`)).expect(201))
+    const result = (await as(owner, http().post(`/versions/${v1.id}/restore`)).expect(200))
       .body as { savedAs: number | null };
     expect(result.savedAs).toBe(3);
     const list = await versions(owner, projectId);
     expect(list[0]).toMatchObject({ number: 3, kind: 'before-restore', tasks: 2 });
-    await as(owner, http().post(`/versions/${list[0]!.id}/restore`)).expect(201);
+    await as(owner, http().post(`/versions/${list[0]!.id}/restore`)).expect(200);
     expect((await tasksOf(owner, projectId)).map((t) => t.name).sort()).toEqual([
       'Saved',
       'Unsaved work',

@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -57,6 +58,10 @@ export class ProjectsController {
     return this.projectsService.findOne(id, userId);
   }
 
+  /**
+   * Rename it, change its description, or archive and reopen it (`archived`). An archived project
+   * is read-only for editors until an owner reopens it (see project-access.ts).
+   */
   @Patch(':id')
   @IfMatch()
   @ProjectAccess('owner', projectInParam())
@@ -69,24 +74,9 @@ export class ProjectsController {
     return this.projectsService.update(id, updateProjectDto, userId);
   }
 
-  @Patch(':id/archive')
-  @IfMatch()
-  @ProjectAccess('owner', projectInParam())
-  @Broadcast({ entity: 'project', action: 'update', project: projectInParam() })
-  archive(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() userId: string) {
-    return this.projectsService.archive(id, userId);
-  }
-
-  @Patch(':id/reopen')
-  @IfMatch()
-  @ProjectAccess('owner', projectInParam())
-  @Broadcast({ entity: 'project', action: 'update', project: projectInParam() })
-  reopen(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() userId: string) {
-    return this.projectsService.reopen(id, userId);
-  }
-
   // Tells whoever has it open, so they can move off it.
   @Delete(':id')
+  @HttpCode(204)
   @IfMatch()
   @ProjectAccess('owner', projectInParam())
   @Broadcast({ entity: 'project', action: 'delete', project: projectInParam() })

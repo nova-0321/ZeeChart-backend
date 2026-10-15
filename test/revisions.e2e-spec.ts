@@ -177,7 +177,7 @@ describe('Revisions (e2e)', () => {
     const created = (await history(owner, projectId)).find(
       (r) => r.entityId === task.id && r.version === 1,
     )!;
-    const result = (await restore(owner, created.id).expect(201)).body as {
+    const result = (await restore(owner, created.id).expect(200)).body as {
       version: number;
       skipped: string[];
     };
@@ -209,7 +209,7 @@ describe('Revisions (e2e)', () => {
     const deletion = (await history(owner, projectId)).find(
       (r) => r.entityId === doomed.id && r.action === 'delete',
     )!;
-    await restore(owner, deletion.id).expect(201);
+    await restore(owner, deletion.id).expect(200);
     const back = (await tasksOf(owner, projectId)).find((t) => t.id === doomed.id);
     expect(back).toMatchObject({ name: 'Doomed', parentId: group.id });
     const links = (await as(owner, http().get(`/dependencies?projectId=${projectId}`)).expect(200))
@@ -265,7 +265,7 @@ describe('Revisions (e2e)', () => {
       .expect(200);
     const revisions = await history(editor, projectId);
     const eventGone = revisions.find((r) => r.entityId === event.id && r.action === 'delete')!;
-    await restore(editor, eventGone.id).expect(201);
+    await restore(editor, eventGone.id).expect(200);
     const events = (await as(owner, http().get(`/events?projectId=${projectId}`)).expect(200))
       .body as { id: string; name: string }[];
     expect(events.map((e) => [e.id, e.name])).toEqual([[event.id, 'Freeze']]);
@@ -273,7 +273,7 @@ describe('Revisions (e2e)', () => {
     const created = revisions.find((r) => r.entityType === 'project' && r.action === 'create')!;
     const forbidden = await restore(editor, created.id);
     expect(forbidden.status).toBe(403);
-    await restore(owner, created.id).expect(201);
+    await restore(owner, created.id).expect(200);
     const project = (await as(owner, http().get(`/projects/${projectId}`)).expect(200)).body as {
       name: string;
     };
