@@ -153,7 +153,7 @@ describe('Members (e2e)', () => {
     await as(ed, http().patch(`/tasks/${taskId}`))
       .send({ name: 'Renamed' })
       .expect(200);
-    const refused = await as(ed, http().patch(`/projects/${projectId}/archive`));
+    const refused = await as(ed, http().patch(`/projects/${projectId}`).send({ archived: true }));
     expect(refused.status).toBe(403);
     expect((refused.body as { message: string }).message).toBe(
       'Only an owner of this project can do this',
@@ -310,7 +310,7 @@ describe('Members (e2e)', () => {
     const { owner, projectId } = await setUp();
     const ed = await signUp('Ed');
     await add(owner, projectId, { email: ed.email }).expect(201);
-    await as(owner, http().delete(`/projects/${projectId}`)).expect(200);
+    await as(owner, http().delete(`/projects/${projectId}`)).expect(204);
     const theirs = (await as(ed, http().get('/projects')).expect(200)).body as { id: string }[];
     expect(theirs.map((p) => p.id)).not.toContain(projectId);
   });

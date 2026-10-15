@@ -13,6 +13,22 @@ import { TaskScheduler } from './scheduling/task-scheduler.service.js';
 const dayOf = (date: Date | string) =>
   typeof date === 'string' ? date.slice(0, 10) : date.toISOString().slice(0, 10);
 
+/** A place past the end of any level: the task goes last. */
+const LAST = Number.MAX_SAFE_INTEGER;
+
+/**
+ * The write that numbers `level` 1, 2, 3... in its order, the rows already on their place left as
+ * they are. `task` is skipped: its own save writes its order.
+ */
+function numberedAs(level: Task[], task: Task) {
+  return async (manager: EntityManager) => {
+    for (const [index, row] of level.entries()) {
+      if (row === task || row.order === index + 1) continue;
+      await manager.update(Task, { id: row.id }, { order: index + 1 });
+    }
+  };
+}
+
 @Injectable()
 export class TaskService {
   constructor(
@@ -84,12 +100,16 @@ export class TaskService {
   }
 
   /**
-   * A deleted task made again with its own id (so its history goes on). In a group, the group has
-   * to cover it (and a link may forbid it): the scheduler does both, as for a new task.
+   * A deleted task made again with its own id (so its history goes on), at the place it had in its
+   * level (`order`), the others numbered around it. In a group, the group has to cover it (and a
+   * link may forbid it): the scheduler does both, as for a new task.
    */
-  recreate(fields: Partial<Task> & Pick<Task, 'id' | 'projectId' | 'parentId'>): Promise<Task> {
+  async recreate(
+    fields: Partial<Task> & Pick<Task, 'id' | 'projectId' | 'parentId'>,
+  ): Promise<Task> {
     const task = this.taskRepo.create(fields);
-    return task.parentId ? this.scheduler.saveAttached(task) : this.taskRepo.save(task);
+    const numberLevel = await this.placeIn(task, task.parentId, (fields.order ?? LAST) - 1);
+    return this.saveInLevel(task, numberLevel);
   }
 
   async create(dto: TaskDto) {
@@ -103,27 +123,60 @@ export class TaskService {
     if (dto.parentId) {
       await this.assertValidParent(null, dto.projectId, dto.parentId);
     }
-    // progress and order have no database default, so they must be set here: without them the
-    // insert fails with "null value in column ... violates not-null constraint".
+    // progress has no database default, so it must be set here: without it the insert fails with
+    // "null value in column ... violates not-null constraint". order is set by placeIn.
     const task = this.taskRepo.create({
       ...dto,
+      parentId: dto.parentId ?? null,
       // A milestone is one day: it has no end of its own.
       ...(dto.type === 'milestone' ? { endDate: dto.startDate } : {}),
       progress: dto.progress ?? 0,
-      order: dto.order ?? (await this.nextOrder(dto.projectId)),
     });
-    // In a group, the group has to cover the task (and a link may forbid it): the scheduler does both.
-    return task.parentId ? this.scheduler.saveAttached(task) : this.taskRepo.save(task);
+    // `order` is its place in its level (1 first), the others moved down; none: the last.
+    const numberLevel = await this.placeIn(task, task.parentId, (dto.order ?? LAST) - 1);
+    return this.saveInLevel(task, numberLevel);
   }
 
-  /** One past the highest order in the project, so a new task goes to the end of the list. */
-  private async nextOrder(projectId: string) {
-    const row = await this.taskRepo
-      .createQueryBuilder('task')
-      .select('MAX(task.order)', 'max')
-      .where('task.projectId = :projectId', { projectId })
-      .getRawOne<{ max: number | null }>();
-    return (row?.max ?? 0) + 1;
+  /**
+   * Saves a task with the write that numbers its level (placeIn), in one transaction. In a group,
+   * the group has to cover the task (and a link may forbid it): the scheduler does both.
+   */
+  private saveInLevel(task: Task, numberLevel: (manager: EntityManager) => Promise<void>) {
+    return task.parentId
+      ? this.scheduler.saveAttached(task, null, numberLevel)
+      : this.taskRepo.manager.transaction(async (manager) => {
+          await numberLevel(manager);
+          return manager.save(Task, task);
+        });
+  }
+
+  /**
+   * Puts `task` at `index` (0 first; past the end: last) among the tasks of `parentId` (null: the
+   * top level) as they are now: sets its `order`, and returns the write that numbers the others
+   * 1, 2, 3... around it, to run in the transaction that saves it. Every level is kept numbered so
+   * (#57): no gap, no two on one place.
+   */
+  private async placeIn(task: Task, parentId: string | null, index: number) {
+    const siblings = await this.taskRepo.find({
+      where: { projectId: task.projectId, parentId: parentId ?? IsNull() },
+      order: { order: 'ASC', createdAt: 'ASC', id: 'ASC' },
+    });
+    const level = siblings.filter((sibling) => sibling.id !== task.id);
+    level.splice(Math.min(Math.max(index, 0), level.length), 0, task);
+    task.order = level.indexOf(task) + 1;
+    return numberedAs(level, task);
+  }
+
+  /** The write that numbers the level `task` leaves (its group now) 1, 2, 3... without it. */
+  private async leaveLevel(task: Task) {
+    const siblings = await this.taskRepo.find({
+      where: { projectId: task.projectId, parentId: task.parentId ?? IsNull() },
+      order: { order: 'ASC', createdAt: 'ASC', id: 'ASC' },
+    });
+    return numberedAs(
+      siblings.filter((sibling) => sibling.id !== task.id),
+      task,
+    );
   }
 
   /**
@@ -142,20 +195,19 @@ export class TaskService {
       // Up a level first (the FK would only make them top-level).
       if (children.length > 0) await manager.update(Task, { parentId: id }, { parentId });
       await manager.delete(Task, { id });
-      if (children.length > 0) {
-        const level = await manager.find(Task, {
-          where: { projectId, parentId: parentId ?? IsNull() },
-          order: { order: 'ASC', createdAt: 'ASC' },
-        });
-        const moved = new Set(children.map((child) => child.id));
-        const others = level.filter((row) => !moved.has(row.id));
-        // Where the group was in that list.
-        const at = others.filter((row) => row.order < task.order).length;
-        const placed = [...others.slice(0, at), ...children, ...others.slice(at)];
-        for (const [index, row] of placed.entries()) {
-          if (row.order !== index + 1) {
-            await manager.update(Task, { id: row.id }, { order: index + 1 });
-          }
+      // The list it was in, numbered 1, 2, 3... again: its tasks where it was, and no gap.
+      const level = await manager.find(Task, {
+        where: { projectId, parentId: parentId ?? IsNull() },
+        order: { order: 'ASC', createdAt: 'ASC', id: 'ASC' },
+      });
+      const moved = new Set(children.map((child) => child.id));
+      const others = level.filter((row) => !moved.has(row.id));
+      // Where the group was in that list.
+      const at = others.filter((row) => row.order < task.order).length;
+      const placed = [...others.slice(0, at), ...children, ...others.slice(at)];
+      for (const [index, row] of placed.entries()) {
+        if (row.order !== index + 1) {
+          await manager.update(Task, { id: row.id }, { order: index + 1 });
         }
       }
       // The group the task was in fits what is in it now.
@@ -163,8 +215,11 @@ export class TaskService {
     });
   }
 
-  /** Move a task under a group, or pass null to make it top-level. */
-  async setParent(taskId: string, parentId: string | null) {
+  /**
+   * Puts a task in a group, or at the top level (null), at `index` there (past the end: last); the
+   * level it left closes up. For restoring a task's group; the routes move tasks with `move`.
+   */
+  async setParent(taskId: string, parentId: string | null, index = LAST) {
     const task = await this.taskRepo.findOneByOrFail({ id: taskId });
 
     if (parentId) {
@@ -172,11 +227,20 @@ export class TaskService {
     }
 
     const oldParentId = task.parentId;
+    const numberOld = oldParentId !== parentId ? await this.leaveLevel(task) : null;
+    const numberNew = await this.placeIn(task, parentId, index);
+    const numberBoth = async (manager: EntityManager) => {
+      await numberOld?.(manager);
+      await numberNew(manager);
+    };
     task.parentId = parentId;
     // Both the group it goes in and the group it left have to fit what is in them now.
     return parentId || oldParentId
-      ? this.scheduler.saveAttached(task, oldParentId)
-      : this.taskRepo.save(task);
+      ? this.scheduler.saveAttached(task, oldParentId, numberBoth)
+      : this.taskRepo.manager.transaction(async (manager) => {
+          await numberBoth(manager);
+          return manager.save(Task, task);
+        });
   }
 
   /**
@@ -193,24 +257,17 @@ export class TaskService {
       ? await this.assertValidParent(task.id, task.projectId, parentId, true)
       : null;
     const becomesGroup = parent?.type === 'task' ? parent : null;
-    const siblings = await this.taskRepo.find({
-      where: { projectId: task.projectId, parentId: parentId ?? IsNull() },
-      order: { order: 'ASC', createdAt: 'ASC', id: 'ASC' },
-    });
-    const level = siblings.filter((sibling) => sibling.id !== task.id);
-    level.splice(Math.min(index, level.length), 0, task);
-    const orderOf = new Map(level.map((item, position) => [item.id, position + 1]));
+    const oldParentId = task.parentId;
+    // Out of a group: the level it leaves closes up (no gap where it was).
+    const numberOld = parentId !== oldParentId ? await this.leaveLevel(task) : null;
+    const numberNew = await this.placeIn(task, parentId, index);
     const renumber = async (manager: EntityManager) => {
       if (becomesGroup) await manager.update(Task, { id: becomesGroup.id }, { type: 'group' });
-      for (const sibling of level) {
-        if (sibling.id === task.id || sibling.order === orderOf.get(sibling.id)) continue;
-        await manager.update(Task, { id: sibling.id }, { order: orderOf.get(sibling.id) });
-      }
+      await numberOld?.(manager);
+      await numberNew(manager);
     };
 
-    const oldParentId = task.parentId;
     task.parentId = parentId;
-    task.order = orderOf.get(task.id)!;
     if (parentId !== oldParentId) {
       return this.scheduler.saveAttached(task, oldParentId, renumber);
     }

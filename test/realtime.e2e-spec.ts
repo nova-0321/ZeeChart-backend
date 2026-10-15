@@ -25,6 +25,9 @@ import { TaskService } from '../src/tasks/task.service.js';
 import { ConfiguredIoAdapter } from '../src/realtime/socket-io.adapter.js';
 import { createValidationPipe } from '../src/common/validation.js';
 
+/** An index past the end of any list: /move puts the task last (as the removed /parent did). */
+const LAST = 10_000;
+
 // The live connection against the real app and database: rooms per project.
 
 describe('Realtime (e2e)', () => {
@@ -320,8 +323,8 @@ describe('Realtime (e2e)', () => {
       await as(http().patch(`/tasks/${task.id}`))
         .send({ name: 'Alpha 2' })
         .expect(200);
-      await as(http().patch(`/tasks/${task.id}/parent`))
-        .send({ parentId: group.id })
+      await as(http().patch(`/tasks/${task.id}/move`))
+        .send({ parentId: group.id, index: LAST })
         .expect(200);
       await as(http().patch(`/tasks/${task.id}/move`))
         .send({ parentId: null, index: 0 })
@@ -479,9 +482,9 @@ describe('Realtime (e2e)', () => {
       await as(http().patch(`/projects/${projectId}`))
         .send({ description: 'x' })
         .expect(200);
-      await as(http().patch(`/projects/${projectId}/archive`)).expect(200);
-      await as(http().patch(`/projects/${projectId}/reopen`)).expect(200);
-      await as(http().delete(`/projects/${projectId}`)).expect(200);
+      await as(http().patch(`/projects/${projectId}`).send({ archived: true })).expect(200);
+      await as(http().patch(`/projects/${projectId}`).send({ archived: false })).expect(200);
+      await as(http().delete(`/projects/${projectId}`)).expect(204);
       await settle();
       expect(toSender).toEqual([]);
       expect(toOther.map(head)).toEqual([
@@ -562,10 +565,14 @@ describe('Realtime (e2e)', () => {
         await http().delete(`/tasks/${a.id}`).set('X-Client-Id', senderId).expect(204);
         await settle();
 
-        expect(toOther[0]!.changes).toEqual({
-          tasks: { upsert: [], delete: [a.id] },
-          dependencies: { upsert: [], delete: [link.id] },
-        });
+        // B moved up to A's place (each level is numbered 1, 2, 3...: #57), so it is sent too.
+        const changes = toOther[0]!.changes as {
+          tasks: { upsert: Row[]; delete: string[] };
+          dependencies: unknown;
+        };
+        expect(changes.tasks.delete).toEqual([a.id]);
+        expect(changes.tasks.upsert).toEqual([expect.objectContaining({ id: b.id, order: 1 })]);
+        expect(changes.dependencies).toEqual({ upsert: [], delete: [link.id] });
       });
 
       it('events and the project send their rows too', async () => {

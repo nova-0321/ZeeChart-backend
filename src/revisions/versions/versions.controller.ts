@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
@@ -124,6 +125,8 @@ export class VersionsController {
    * versions go, except starred and manually saved ones.
    */
   @Post(':id/restore')
+  // The plan put back, not a thing created: 200, not 201 (#57).
+  @HttpCode(200)
   @ProjectAccess('editor', projectOfRow(ProjectVersion))
   // The whole plan put back: the others load it again, rather than be sent every row (#75).
   @Broadcast({

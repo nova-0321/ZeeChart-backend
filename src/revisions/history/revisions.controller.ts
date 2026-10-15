@@ -1,4 +1,14 @@
-import { Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../../auth/auth.guard.js';
 import { CurrentUser } from '../../auth/current-user.decorator.js';
@@ -50,6 +60,8 @@ export class RevisionsController {
    * change ("Restored to version N"). 400 when it can't be put back as things are now.
    */
   @Post(':id/restore')
+  // A row put back, not a thing created: 200, not 201 (#57).
+  @HttpCode(200)
   @ProjectAccess('editor', projectOfRow(Revision))
   // A row put back as it was: the others load the project again, rather than be sent it (#75).
   @Broadcast({

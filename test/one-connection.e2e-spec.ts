@@ -5,6 +5,9 @@ import request from 'supertest';
 import { createValidationPipe } from '../src/common/validation.js';
 import { deleteTestAccounts } from './cleanup.js';
 
+/** An index past the end of any list: /move puts the task last (as the removed /parent did). */
+const LAST = 10_000;
+
 // A write is one transaction on one connection (RequestTransaction): its changes, its history and
 // the project's lock. This app gets a pool of ONE connection, so a query anywhere in a write that
 // still went to the pool on its own (outside the write's transaction, so not undone with it) would
@@ -77,7 +80,7 @@ describe('Every write on one database connection (e2e)', () => {
     const a = await task('A');
     const c = await task('C');
     await write('patch', `/tasks/${a.id}`, { startDate: '2026-11-03', endDate: '2026-11-09' });
-    await write('patch', `/tasks/${c.id}/parent`, { parentId: group.id });
+    await write('patch', `/tasks/${c.id}/move`, { parentId: group.id, index: LAST });
     await write('patch', `/tasks/${c.id}/move`, { parentId: null, index: 0 });
     await write('patch', `/tasks/${c.id}/type`, { type: 'milestone' });
 
@@ -139,8 +142,8 @@ describe('Every write on one database connection (e2e)', () => {
     await write('delete', `/projects/${copy.id}`);
 
     // The project itself.
-    await write('patch', `/projects/${p}/archive`);
-    await write('patch', `/projects/${p}/reopen`);
+    await write('patch', `/projects/${p}`, { archived: true });
+    await write('patch', `/projects/${p}`, { archived: false });
     await write('delete', `/projects/${p}`);
   }, 120_000);
 });

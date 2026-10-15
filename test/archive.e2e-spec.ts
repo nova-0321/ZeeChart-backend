@@ -7,6 +7,9 @@ import { ARCHIVED_MESSAGE } from '../src/projects/project-access.js';
 import { deleteTestAccounts } from './cleanup.js';
 import { createValidationPipe } from '../src/common/validation.js';
 
+/** An index past the end of any list: /move puts the task last (as the removed /parent did). */
+const LAST = 10_000;
+
 // An archived project is read-only: nothing in its plan changes (tasks, groups, milestones, links,
 // events, undo/redo, restores) until an owner reopens it. Reading, renaming, reopening, deleting,
 // members, and saving/starring/copying versions still work.
@@ -131,11 +134,18 @@ describe('Archived projects (e2e)', () => {
       [
         'move task',
         () =>
-          as(who, http().patch(`/tasks/${p.second.id}/move`)).send({ parentId: null, index: 0 }),
+          as(who, http().patch(`/tasks/${p.second.id}/move`)).send({
+            parentId: null,
+            index: 0,
+          }),
       ],
       [
         'change parent',
-        () => as(who, http().patch(`/tasks/${p.second.id}/parent`)).send({ parentId: p.group.id }),
+        () =>
+          as(who, http().patch(`/tasks/${p.second.id}/move`)).send({
+            parentId: p.group.id,
+            index: LAST,
+          }),
       ],
       [
         'change type',
@@ -176,7 +186,7 @@ describe('Archived projects (e2e)', () => {
 
   it('refuses every change to the plan of an archived project, for owners and editors', async () => {
     const p = await plan();
-    await as(ada, http().patch(`/projects/${p.project.id}/archive`)).expect(200);
+    await as(ada, http().patch(`/projects/${p.project.id}`).send({ archived: true })).expect(200);
     for (const who of [ada, eve]) {
       for (const [name, call] of planChanges(who, p)) {
         const response = await call();
@@ -199,14 +209,14 @@ describe('Archived projects (e2e)', () => {
 
   it('still reads, renames, saves and copies versions, and manages members while archived', async () => {
     const p = await plan();
-    await as(ada, http().patch(`/projects/${p.project.id}/archive`)).expect(200);
+    await as(ada, http().patch(`/projects/${p.project.id}`).send({ archived: true })).expect(200);
     for (const who of [ada, eve, vic]) {
       await as(who, http().get(`/projects/${p.project.id}`)).expect(200);
       await as(who, http().get(`/tasks?projectId=${p.project.id}`)).expect(200);
       await as(who, http().get(`/dependencies?projectId=${p.project.id}`)).expect(200);
       await as(who, http().get(`/events?projectId=${p.project.id}`)).expect(200);
       await as(who, http().get(`/projects/${p.project.id}/revisions`)).expect(200);
-      await as(who, http().get(`/projects/${p.project.id}/undo`)).expect(200);
+      await as(who, http().get(`/projects/${p.project.id}/undo-state`)).expect(200);
     }
     const name = `Renamed ${randomUUID()}`;
     const renamed = (
@@ -243,13 +253,13 @@ describe('Archived projects (e2e)', () => {
 
   it('reopening makes the plan editable again', async () => {
     const p = await plan();
-    await as(ada, http().patch(`/projects/${p.project.id}/archive`)).expect(200);
+    await as(ada, http().patch(`/projects/${p.project.id}`).send({ archived: true })).expect(200);
     await as(eve, http().patch(`/tasks/${p.second.id}`))
       .send({ name: 'Nope' })
       .expect(403);
     // Only an owner reopens.
-    await as(eve, http().patch(`/projects/${p.project.id}/reopen`)).expect(403);
-    await as(ada, http().patch(`/projects/${p.project.id}/reopen`)).expect(200);
+    await as(eve, http().patch(`/projects/${p.project.id}`).send({ archived: false })).expect(403);
+    await as(ada, http().patch(`/projects/${p.project.id}`).send({ archived: false })).expect(200);
     await as(eve, http().patch(`/tasks/${p.second.id}`))
       .send({ name: 'Yes' })
       .expect(200);
@@ -261,9 +271,9 @@ describe('Archived projects (e2e)', () => {
 
   it('an archived project can be deleted by its owner, with everything in it', async () => {
     const p = await plan();
-    await as(ada, http().patch(`/projects/${p.project.id}/archive`)).expect(200);
+    await as(ada, http().patch(`/projects/${p.project.id}`).send({ archived: true })).expect(200);
     await as(eve, http().delete(`/projects/${p.project.id}`)).expect(403);
-    await as(ada, http().delete(`/projects/${p.project.id}`)).expect(200);
+    await as(ada, http().delete(`/projects/${p.project.id}`)).expect(204);
     await as(ada, http().get(`/projects/${p.project.id}`)).expect(404);
     await as(ada, http().get(`/tasks?projectId=${p.project.id}`)).expect(404);
     await as(eve, http().get(`/projects/${p.project.id}`)).expect(404);

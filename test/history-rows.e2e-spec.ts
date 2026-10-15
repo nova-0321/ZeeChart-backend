@@ -6,6 +6,9 @@ import { AppModule } from '../src/app.module.js';
 import { createValidationPipe } from '../src/common/validation.js';
 import { deleteTestAccounts } from './cleanup.js';
 
+/** An index past the end of any list: /move puts the task last (as the removed /parent did). */
+const LAST = 10_000;
+
 // What undo, restoring from the history and restoring a version write back, kind of row by kind of
 // row. Since #55 each kind is written by the domain that owns it (task-rows.ts, link-rows.ts,
 // event-rows.ts, project-rows.ts, membership.ts, TaskService, EventsService); these are the cases
@@ -107,7 +110,7 @@ describe('What the history writes back (e2e)', () => {
       id: string;
     };
   const restoreVersion = (who: Account, id: string) =>
-    as(who, http().post(`/versions/${id}/restore`)).expect(201);
+    as(who, http().post(`/versions/${id}/restore`)).expect(200);
   const message = (response: request.Response) => (response.body as { message: string }).message;
 
   describe('restoring a version', () => {
@@ -158,7 +161,7 @@ describe('What the history writes back (e2e)', () => {
         .send({ priority: 'high' })
         .expect(200);
 
-      await undo(owner, projectId).expect(201);
+      await undo(owner, projectId).expect(200);
 
       expect((await tasksOf(owner, projectId)).map((t) => [t.name, t.priority])).toEqual([
         ['A', 'low'],
@@ -170,7 +173,7 @@ describe('What the history writes back (e2e)', () => {
       await as(owner, http().patch(`/projects/${projectId}`))
         .send({ name: `${projectName} v2` })
         .expect(200);
-      await undo(owner, projectId).expect(201);
+      await undo(owner, projectId).expect(200);
       const project = (await as(owner, http().get(`/projects/${projectId}`)).expect(200)).body as {
         name: string;
       };
@@ -205,7 +208,7 @@ describe('What the history writes back (e2e)', () => {
       await as(owner, http().delete(`/tasks/${a.id}`)).expect(204);
       await as(bob, http().delete(`/tasks/${b.id}`)).expect(204);
 
-      await undo(owner, projectId).expect(201);
+      await undo(owner, projectId).expect(200);
 
       expect((await tasksOf(owner, projectId)).map((t) => t.name)).toEqual(['A']);
       expect(await linksOf(owner, projectId)).toEqual([]);
@@ -221,7 +224,7 @@ describe('What the history writes back (e2e)', () => {
         .send({ parentId: null, index: 0 })
         .expect(200);
 
-      await undo(owner, projectId).expect(201);
+      await undo(owner, projectId).expect(200);
 
       const tasks = await tasksOf(owner, projectId);
       expect(tasks.map((t) => t.order).sort()).toEqual([1, 2]);
@@ -234,8 +237,8 @@ describe('What the history writes back (e2e)', () => {
       const group = await newTask(owner, projectId, { name: 'Phase', type: 'group' });
       const task = await newTask(owner, projectId, { name: 'Build', parentId: group.id });
       // Out of the group (the undo would put it back in), then Bob makes the empty group a task.
-      await as(owner, http().patch(`/tasks/${task.id}/parent`))
-        .send({ parentId: null })
+      await as(owner, http().patch(`/tasks/${task.id}/move`))
+        .send({ parentId: null, index: LAST })
         .expect(200);
       await as(bob, http().patch(`/tasks/${group.id}/type`))
         .send({ type: 'task' })
@@ -252,8 +255,8 @@ describe('What the history writes back (e2e)', () => {
       const { owner, projectId } = await setUp();
       const group = await newTask(owner, projectId, { name: 'Phase', type: 'group' });
       const task = await newTask(owner, projectId, { name: 'Build', parentId: group.id });
-      await as(owner, http().patch(`/tasks/${task.id}/parent`))
-        .send({ parentId: null })
+      await as(owner, http().patch(`/tasks/${task.id}/move`))
+        .send({ parentId: null, index: LAST })
         .expect(200);
       await as(owner, http().patch(`/tasks/${group.id}/type`))
         .send({ type: 'task' })
@@ -262,7 +265,7 @@ describe('What the history writes back (e2e)', () => {
         (r) => r.entityId === task.id && r.action === 'create',
       )!;
 
-      const result = (await as(owner, http().post(`/revisions/${inGroup.id}/restore`)).expect(201))
+      const result = (await as(owner, http().post(`/revisions/${inGroup.id}/restore`)).expect(200))
         .body as { skipped: string[] };
 
       expect(result.skipped).toEqual([
@@ -284,7 +287,7 @@ describe('What the history writes back (e2e)', () => {
         (r) => r.entityId === task.id && r.action === 'delete',
       )!;
 
-      await as(owner, http().post(`/revisions/${deletion.id}/restore`)).expect(201);
+      await as(owner, http().post(`/revisions/${deletion.id}/restore`)).expect(200);
 
       const phase = (await tasksOf(owner, projectId)).find((t) => t.id === group.id)!;
       expect([phase.startDate.slice(0, 10), phase.endDate.slice(0, 10)]).toEqual([
@@ -313,7 +316,7 @@ describe('What the history writes back (e2e)', () => {
         (r) => r.entityId === event.id && r.action === 'create',
       )!;
 
-      await as(owner, http().post(`/revisions/${created.id}/restore`)).expect(201);
+      await as(owner, http().post(`/revisions/${created.id}/restore`)).expect(200);
 
       const events = (await as(owner, http().get(`/events?projectId=${projectId}`)).expect(200))
         .body as { id: string; name: string }[];

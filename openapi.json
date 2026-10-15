@@ -497,6 +497,7 @@
             "bearer": []
           }
         ],
+        "summary": "Rename it, change its description, or archive and reopen it (`archived`). An archived project\nis read-only for editors until an owner reopens it (see project-access.ts).",
         "tags": [
           "projects"
         ]
@@ -523,116 +524,8 @@
           }
         ],
         "responses": {
-          "200": {
+          "204": {
             "description": ""
-          },
-          "409": {
-            "description": "Someone else changed the same fields since that version: nothing was saved",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConflictErrorDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "tags": [
-          "projects"
-        ]
-      }
-    },
-    "/projects/{id}/archive": {
-      "patch": {
-        "operationId": "Projects_archive",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "If-Match",
-            "in": "header",
-            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MyProjectDto"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Someone else changed the same fields since that version: nothing was saved",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConflictErrorDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "tags": [
-          "projects"
-        ]
-      }
-    },
-    "/projects/{id}/reopen": {
-      "patch": {
-        "operationId": "Projects_reopen",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "If-Match",
-            "in": "header",
-            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MyProjectDto"
-                }
-              }
-            }
           },
           "409": {
             "description": "Someone else changed the same fields since that version: nothing was saved",
@@ -1192,83 +1085,6 @@
         ]
       }
     },
-    "/tasks/{id}/parent": {
-      "patch": {
-        "operationId": "Task_setParent",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "If-Match",
-            "in": "header",
-            "description": "The version of the row this change was made from (as the API last gave it). Without it, nothing is checked.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetParentDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The Task, with every row the write changed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Task"
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "changes": {
-                          "$ref": "#/components/schemas/RowChangesDto"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Someone else changed the same fields since that version: nothing was saved",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConflictErrorDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Move a task under a group, or send { \"parentId\": null } to make it top-level.",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
     "/tasks/{id}/move": {
       "patch": {
         "operationId": "Task_move",
@@ -1340,7 +1156,7 @@
             "bearer": []
           }
         ],
-        "summary": "Put a task at a place in the list: under a group (or at the top level, with null) and at an\nindex among the tasks there. The tasks of that level are numbered again to keep that order.",
+        "summary": "Put a task at a place in the list: under a group (or at the top level, with null) and at an\nindex among the tasks there (past the end: last). The tasks of that level are numbered again to\nkeep that order. The one way to change a task's group: dropped on a plain task, that task\nbecomes a group holding it; a milestone holds nothing.",
         "tags": [
           "tasks"
         ]
@@ -1704,7 +1520,7 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
@@ -1726,7 +1542,7 @@
         ]
       }
     },
-    "/projects/{id}/undo": {
+    "/projects/{id}/undo-state": {
       "get": {
         "operationId": "Undo_state",
         "parameters": [
@@ -1760,6 +1576,43 @@
         "tags": [
           "undo"
         ]
+      }
+    },
+    "/projects/{id}/undo": {
+      "get": {
+        "deprecated": true,
+        "operationId": "Undo_oldState",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoStateDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The same as GET undo-state, under its old name (#57: it read like the action, POST undo). Kept\nuntil the frontend asks for undo-state; then removed.",
+        "tags": [
+          "undo"
+        ]
       },
       "post": {
         "operationId": "Undo_undo",
@@ -1774,7 +1627,7 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
@@ -1810,7 +1663,7 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
@@ -2066,7 +1919,7 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
@@ -3211,7 +3064,7 @@
           },
           "order": {
             "type": "number",
-            "description": "Position among the project's tasks. Defaults to the end of the list.",
+            "description": "Its place in its level (the group's tasks, or the top level): 1 first, the tasks from there\nmoved down. Past the end, or none: the last. Every level is numbered 1, 2, 3... (#57).",
             "minimum": 0,
             "maximum": 1000000
           },
@@ -3276,20 +3129,6 @@
             "pattern": "^#[0-9a-fA-F]{6}$"
           }
         }
-      },
-      "SetParentDto": {
-        "type": "object",
-        "properties": {
-          "parentId": {
-            "type": "string",
-            "nullable": true,
-            "description": "Id of the group to move the task under, or null to make it top-level.",
-            "format": "uuid"
-          }
-        },
-        "required": [
-          "parentId"
-        ]
       },
       "MoveTaskDto": {
         "type": "object",

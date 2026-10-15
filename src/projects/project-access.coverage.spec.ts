@@ -44,10 +44,11 @@ const routes = () =>
 
 describe('project access coverage', () => {
   it('finds the project routes', () => {
-    // 42 today: projects 7, tasks 7, dependencies 4, events 4, members 3, invitations 4,
+    // 40 today: projects 5, tasks 6, dependencies 4, events 4, members 3, invitations 4,
     // invite links 2,
-    // revisions 2, versions 6, undo 3. A new one fails on purpose.
-    expect(routes().length).toBe(42);
+    // revisions 2, versions 6, undo 4 (undo-state, and undo for it until the frontend moves).
+    // A new one fails on purpose.
+    expect(routes().length).toBe(40);
   });
 
   it('every one runs the access guard and says how to find its project', () => {

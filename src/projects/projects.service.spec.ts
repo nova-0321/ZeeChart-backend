@@ -13,15 +13,26 @@ describe('ProjectsService', () => {
   const projectRepo = { findOneBy: vi.fn(), remove: vi.fn(), update: vi.fn(), existsBy: vi.fn() };
   // Memberships are read through the members domain (membership.ts), on the request's manager.
   const manager = { find: vi.fn(), findOne: vi.fn() };
+  // A write's own transaction (RequestTransaction.run): reads the row, merges the change, saves.
+  const write = { findOneBy: vi.fn(), merge: vi.fn(), save: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
+    write.merge.mockImplementation((_: unknown, row: object, change: object) => ({
+      ...row,
+      ...change,
+    }));
+    write.save.mockImplementation(async (row: unknown) => row);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProjectsService,
         {
           provide: RequestTransaction,
-          useValue: { repo: () => projectRepo, manager },
+          useValue: {
+            repo: () => projectRepo,
+            manager,
+            run: (work: (on: typeof write) => unknown) => work(write),
+          },
         },
       ],
     }).compile();
@@ -62,19 +73,24 @@ describe('ProjectsService', () => {
     await expect(service.findOne('p1', 'u1')).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('archive and reopen set the flag and answer the project with your role', async () => {
-    projectRepo.update.mockResolvedValue({ affected: 1 });
+  // The one way to archive and reopen (#57: the /archive and /reopen routes are gone).
+  it('update archives and reopens (archived), and answers the project with your role', async () => {
+    write.findOneBy.mockResolvedValue({ ...launch });
     manager.findOne.mockResolvedValue({ role: 'owner', project: launch, addedBy: null });
 
-    await expect(service.archive('p1', 'u1')).resolves.toMatchObject({ role: 'owner' });
-    expect(projectRepo.update).toHaveBeenCalledWith({ id: 'p1' }, { archived: true });
-    await service.reopen('p1', 'u1');
-    expect(projectRepo.update).toHaveBeenLastCalledWith({ id: 'p1' }, { archived: false });
+    await expect(service.update('p1', { archived: true }, 'u1')).resolves.toMatchObject({
+      role: 'owner',
+    });
+    expect(write.save).toHaveBeenLastCalledWith(expect.objectContaining({ archived: true }));
+    await service.update('p1', { archived: false }, 'u1');
+    expect(write.save).toHaveBeenLastCalledWith(expect.objectContaining({ archived: false }));
   });
 
-  it('archive is a 404 for a project that does not exist', async () => {
-    projectRepo.update.mockResolvedValue({ affected: 0 });
-    await expect(service.archive('p1', 'u1')).rejects.toBeInstanceOf(NotFoundException);
+  it('update is a 404 for a project that does not exist', async () => {
+    write.findOneBy.mockResolvedValue(null);
+    await expect(service.update('p1', { archived: true }, 'u1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   // Tasks and events ask this before adding a row to a project (#55).

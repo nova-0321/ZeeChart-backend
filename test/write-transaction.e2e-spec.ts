@@ -11,6 +11,9 @@ import { TaskScheduler } from '../src/tasks/scheduling/task-scheduler.service.js
 import { TaskService } from '../src/tasks/task.service.js';
 import { deleteTestAccounts } from './cleanup.js';
 
+/** An index past the end of any list: /move puts the task last (as the removed /parent did). */
+const LAST = 10_000;
+
 // A write is one transaction (RequestTransaction): its changes and its history are saved together
 // or not at all. Each test makes one step fail after earlier steps already wrote, and checks that
 // nothing of the write is left.
@@ -147,8 +150,8 @@ describe('A write and its history: all or nothing (e2e)', () => {
     const projectId = await newProject();
     const group = await newTask(projectId, 'Group', { type: 'group' });
     const task = await newTask(projectId, 'T');
-    await as(http().patch(`/tasks/${task.id}/parent`))
-      .send({ parentId: group.id })
+    await as(http().patch(`/tasks/${task.id}/move`))
+      .send({ parentId: group.id, index: LAST })
       .expect(200);
     // Restoring its first revision puts it back at the top level (step 1), then updates its
     // fields (step 2), which fails here.

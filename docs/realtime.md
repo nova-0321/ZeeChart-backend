@@ -65,11 +65,11 @@ interface ChangeMessage {
 | Routes                                                                                    | Message                                                                                                          |
 | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `POST /tasks`                                                                             | `task` `create`, the new task's id                                                                               |
-| `PATCH /tasks/:id`, `/:id/parent`, `/:id/move`, `/:id/type`                               | `task` `update`                                                                                                  |
+| `PATCH /tasks/:id`, `/:id/move`, `/:id/type`                                              | `task` `update`                                                                                                  |
 | `DELETE /tasks/:id`                                                                       | `task` `delete`                                                                                                  |
 | `POST`, `PATCH`, `DELETE /dependencies`                                                   | `dependency` `create` / `update` / `delete`                                                                      |
 | `POST`, `PATCH`, `DELETE /events`                                                         | `event` `create` / `update` / `delete`                                                                           |
-| `PATCH /projects/:id`, `/:id/archive`, `/:id/reopen`                                      | `project` `update`                                                                                               |
+| `PATCH /projects/:id` (name, description, archived)                                       | `project` `update`                                                                                               |
 | `DELETE /projects/:id`                                                                    | `project` `delete` (whoever has it open should move off it)                                                      |
 | `POST /projects/:id/members`, `PATCH` / `DELETE /members/:id`                             | `member` `create` / `update` / `delete`, the member's id                                                         |
 | `POST /projects/:id/invitations`, `POST /invitations/:id/link`, `DELETE /invitations/:id` | `invitation` `create` / `update` / `delete` (an invite of someone with an account adds them: reload members too) |
@@ -107,7 +107,7 @@ interface RowChanges {
   (`MAX_CHANGED_ROWS`), a restore (`POST /versions/:id/restore`, `POST /revisions/:id/restore`),
   `resync`, a project deleted, and member and invitation messages.
 - **The tab that made the change** isn't sent the message. The answer of `POST` / `PATCH /tasks`
-  (and `/:id/parent`, `/:id/move`, `/:id/type`), `POST` / `PATCH /dependencies` and `POST` /
+  (and `/:id/move`, `/:id/type`), `POST` / `PATCH /dependencies` and `POST` /
   `PATCH /events` carries the same `changes` (the row it answers with is in it too). A delete
   answers 204 with no body: after its own delete, a tab loads the project again.
 - Writes to one project are made one after another (ProjectWriteLock), and their messages leave in

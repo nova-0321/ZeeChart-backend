@@ -32,7 +32,7 @@ import { writeProjectRow } from '../../projects/project-rows.js';
 import {
   parentIdOf,
   putAtPlace,
-  renumberClashes,
+  numberLevels,
   setTaskParent,
   taskTreeOf,
   writeTask,
@@ -259,13 +259,14 @@ export class UndoService {
       // or a group inside itself (that would also loop the scheduler forever).
       await assertTreeHolds(manager, projectId, direction);
       // A task this batch moved goes back to its place among the tasks there now (the others keep
-      // their order); then any two on the same place (a task made again) are numbered again.
+      // their order); then every level it touched is numbered 1, 2, 3... again: no two on the same
+      // place (a task made again), no gap (a task removed).
       for (const task of tasks) {
         if (task.place === undefined) continue;
         await putAtPlace(manager, projectId, task.id, task.parentId, task.place);
         placed.push(task.id);
       }
-      await renumberClashes(manager, projectId, levels, new Set(tasks.map((task) => task.id)));
+      await numberLevels(manager, projectId, levels, new Set(tasks.map((task) => task.id)));
       // The groups it touched fit their tasks again (a task someone else put in a group since is
       // still in it, and the group must cover it), and links push what follows the written tasks.
       // In the same transaction: all of it, or none.

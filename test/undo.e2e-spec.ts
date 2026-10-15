@@ -88,7 +88,7 @@ describe('Undo, redo and versions (e2e)', () => {
       lagDays: number;
     }[];
   const state = async (who: Account, projectId: string) =>
-    (await as(who, http().get(`/projects/${projectId}/undo`)).expect(200)).body as UndoState;
+    (await as(who, http().get(`/projects/${projectId}/undo-state`)).expect(200)).body as UndoState;
   const undo = (who: Account, projectId: string) =>
     as(who, http().post(`/projects/${projectId}/undo`));
   const redo = (who: Account, projectId: string) =>
@@ -103,23 +103,37 @@ describe('Undo, redo and versions (e2e)', () => {
       .expect(200);
     expect((await state(owner, projectId)).undo?.summary).toBe('Renamed “Design” to “Design v2”');
 
-    await undo(owner, projectId).expect(201);
+    await undo(owner, projectId).expect(200);
     expect((await tasksOf(owner, projectId))[0]!.name).toBe('Design');
-    await undo(owner, projectId).expect(201);
+    await undo(owner, projectId).expect(200);
     expect(await tasksOf(owner, projectId)).toEqual([]);
     // Back to the project's creation: nothing more of yours to undo here.
     const s = await state(owner, projectId);
     expect(s.redo?.summary).toBe('Added task “Design”');
 
-    await redo(owner, projectId).expect(201);
+    await redo(owner, projectId).expect(200);
     expect((await tasksOf(owner, projectId)).map((t) => [t.id, t.name])).toEqual([
       [task.id, 'Design'],
     ]);
-    await redo(owner, projectId).expect(201);
+    await redo(owner, projectId).expect(200);
     expect((await tasksOf(owner, projectId))[0]!.name).toBe('Design v2');
     const end = await redo(owner, projectId);
     expect(end.status).toBe(409);
     expect((end.body as { message: string }).message).toBe('Nothing to redo');
+  });
+
+  // #57: the state is GET undo-state; GET undo (its old name, read like the action) answers the
+  // same until the frontend has moved; undo and redo create nothing, so they answer 200.
+  it('undo-state, its old name GET undo, and 200 for undo and redo', async () => {
+    const { owner, projectId } = await setUp();
+    await newTask(owner, projectId, { name: 'Design' });
+    const now = await state(owner, projectId);
+    const old = await as(owner, http().get(`/projects/${projectId}/undo`)).expect(200);
+    expect(old.body).toEqual(now);
+    expect(now.undo?.summary).toBe('Added task “Design”');
+
+    expect((await undo(owner, projectId)).status).toBe(200);
+    expect((await redo(owner, projectId)).status).toBe(200);
   });
 
   it('a new change clears what could be redone', async () => {
@@ -128,7 +142,7 @@ describe('Undo, redo and versions (e2e)', () => {
     await as(owner, http().patch(`/tasks/${task.id}`))
       .send({ name: 'B' })
       .expect(200);
-    await undo(owner, projectId).expect(201);
+    await undo(owner, projectId).expect(200);
     expect((await state(owner, projectId)).redo).not.toBeNull();
     await as(owner, http().patch(`/tasks/${task.id}`))
       .send({ progress: 30 })
@@ -152,7 +166,7 @@ describe('Undo, redo and versions (e2e)', () => {
     await as(owner, http().patch(`/tasks/${child.id}`))
       .send({ startDate: '2026-11-23', endDate: '2026-11-27' })
       .expect(200);
-    await undo(owner, projectId).expect(201);
+    await undo(owner, projectId).expect(200);
     expect((await tasksOf(owner, projectId)).map((t) => [t.name, days(t)]).sort()).toEqual(before);
   });
 
@@ -170,11 +184,11 @@ describe('Undo, redo and versions (e2e)', () => {
         .expect(201)
     ).body as { id: string };
     expect((await state(owner, projectId)).undo?.summary).toBe('Linked “A” → “B”');
-    await undo(owner, projectId).expect(201);
+    await undo(owner, projectId).expect(200);
     expect(await linksOf(owner, projectId)).toEqual([]);
-    await redo(owner, projectId).expect(201);
+    await redo(owner, projectId).expect(200);
     await as(owner, http().delete(`/dependencies/${link.id}`)).expect(204);
-    await undo(owner, projectId).expect(201);
+    await undo(owner, projectId).expect(200);
     expect((await linksOf(owner, projectId)).map((l) => l.id)).toEqual([link.id]);
   });
 
@@ -191,7 +205,7 @@ describe('Undo, redo and versions (e2e)', () => {
       .send({ fromTaskId: doomed.id, toTaskId: after.id })
       .expect(201);
     await as(owner, http().delete(`/tasks/${doomed.id}`)).expect(204);
-    await undo(owner, projectId).expect(201);
+    await undo(owner, projectId).expect(200);
     const back = (await tasksOf(owner, projectId)).find((t) => t.id === doomed.id);
     expect(back).toMatchObject({ name: 'Doomed', parentId: group.id });
     expect((await linksOf(owner, projectId)).map((l) => [l.fromTaskId, l.toTaskId])).toEqual([
@@ -218,8 +232,8 @@ describe('Undo, redo and versions (e2e)', () => {
     );
     expect((await tasksOf(owner, projectId)).length).toBe(1);
     // After Bob undoes his, Olive's goes through.
-    await undo(bob, projectId).expect(201);
-    await undo(owner, projectId).expect(201);
+    await undo(bob, projectId).expect(200);
+    await undo(owner, projectId).expect(200);
     expect(await tasksOf(owner, projectId)).toEqual([]);
   });
 
@@ -232,7 +246,7 @@ describe('Undo, redo and versions (e2e)', () => {
       .expect(201);
     expect(await state(viewer, projectId)).toEqual({ undo: null, redo: null });
     await undo(viewer, projectId).expect(403);
-    await as(stranger, http().get(`/projects/${projectId}/undo`)).expect(404);
+    await as(stranger, http().get(`/projects/${projectId}/undo-state`)).expect(404);
     await undo(stranger, projectId).expect(404);
   });
 
@@ -300,7 +314,7 @@ describe('Undo, redo and versions (e2e)', () => {
       .expect(200);
     await newTask(owner, projectId, { name: 'D' }); // not in any version yet
     const v2 = (await list()).find((v) => v.number === 2)!;
-    const result = (await as(owner, http().post(`/versions/${v2.id}/restore`)).expect(201))
+    const result = (await as(owner, http().post(`/versions/${v2.id}/restore`)).expect(200))
       .body as { savedAs: number };
     expect(result.savedAs).toBe(6);
     expect((await list()).map((v) => [v.number, v.kind])).toEqual([

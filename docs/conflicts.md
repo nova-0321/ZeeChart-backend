@@ -14,8 +14,7 @@ Not to be confused with the **saved versions** of a whole project (v1, v2… in 
 
 ## Sending the version you saw
 
-A write that changes an existing row (`PATCH`, `DELETE`, and the task routes `/parent`, `/move` and
-`/type`) may send the version the client last saw, in a header:
+A write that changes an existing row (`PATCH`, `DELETE`, and the task routes `/move` and `/type`) may send the version the client last saw, in a header:
 
 ```http
 PATCH /tasks/6f1c… HTTP/1.1

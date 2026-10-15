@@ -7,6 +7,9 @@ import { AppModule } from '../src/app.module.js';
 import { createValidationPipe } from '../src/common/validation.js';
 import { deleteTestAccounts } from './cleanup.js';
 
+/** An index past the end of any list: /move puts the task last (as the removed /parent did). */
+const LAST = 10_000;
+
 // Writes to one project run one after another across server instances (ProjectWriteLock): the
 // conflict check (#21), the link and task-parent cycle checks, task order numbering, and the
 // history each write records. Two separate INestApplications here, sharing the same database, stand
@@ -166,15 +169,15 @@ describe('Cross-instance project write lock (e2e)', () => {
     const { projectId, x, y, apiA, apiB } = await setUp();
     const holder = await holdLock(projectId);
     const link = send(apiA.post('/dependencies', { fromTaskId: x.id, toTaskId: y.id }));
-    const reparent = send(apiB.patch(`/tasks/${y.id}/parent`, { parentId: x.id }));
+    const reparent = send(apiB.patch(`/tasks/${y.id}/move`, { parentId: x.id, index: LAST }));
     expect(await allStillWaiting(link, reparent)).toBe(true);
     await letGo(holder);
-    // What matters is that both waited; their outcomes don't depend on which went first (x is a
-    // plain task, so it can't take y in either order).
-    expect((await link).status).toBe(201);
-    const refused = await reparent;
-    expect(refused.status).toBe(400);
-    expect((refused.body as { message: string }).message).toBe('Parent must be a group');
+    // What matters is that both waited, one after the other: whichever went first, the other is
+    // refused for it (a group can't be linked to a task it holds, nor take a task it is linked to),
+    // so exactly one goes through. Run at once, without the lock, both could.
+    const statuses = [(await link).status, (await reparent).status];
+    expect(statuses.filter((status) => status < 300)).toHaveLength(1);
+    expect(statuses.filter((status) => status === 400)).toHaveLength(1);
   });
 
   /** Every task of the project, grouped by level (parentId, '' for the top level). */

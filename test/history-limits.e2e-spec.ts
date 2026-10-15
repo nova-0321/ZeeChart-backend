@@ -260,7 +260,7 @@ describe('History limits (e2e)', () => {
       expect(await revisionsOf(projectId, kept.id)).toEqual([4]);
 
       // Brought back by a version after its history went: numbered from 1 again, no clash.
-      await call('post', `/versions/${version.id}/restore`).expect(201);
+      await call('post', `/versions/${version.id}/restore`).expect(200);
       expect(await revisionsOf(projectId, gone.id)).toEqual([1]);
     });
 
@@ -276,13 +276,13 @@ describe('History limits (e2e)', () => {
       const projectId = await newProject();
       const task = await newTask(projectId, 'T');
       for (let i = 1; i <= 5; i++) await rename(task.id, `T ${i}`); // versions 2 to 6
-      await call('post', `/projects/${projectId}/undo`).expect(201); // back to "T 4": version 7
+      await call('post', `/projects/${projectId}/undo`).expect(200); // back to "T 4": version 7
       await age(projectId, 60);
       // Only the undo is among the newest: it is kept, and so is the batch it undid (redo needs it).
       await prune(projectId, 1);
       expect(await revisionsOf(projectId, task.id)).toEqual([6, 7]);
 
-      await call('post', `/projects/${projectId}/redo`).expect(201); // "T 5" again: version 8
+      await call('post', `/projects/${projectId}/redo`).expect(200); // "T 5" again: version 8
       const named = async () =>
         (
           (await call('get', `/tasks?projectId=${projectId}`).expect(200)).body as {

@@ -140,8 +140,10 @@ export class RestoreService {
       }
     }
     // A refused step (a link may not allow it in its group) undoes the whole restore: it is one
-    // transaction, so the task stays as it was.
-    if (current.parentId !== parentId) await this.tasks.setParent(current.id, parentId);
+    // transaction, so the task stays as it was. Back in its group at the place it had there.
+    if (current.parentId !== parentId) {
+      await this.tasks.setParent(current.id, parentId, state.order - 1);
+    }
     if (current.type !== state.type) {
       await this.tasks.changeType(current.id, state.type as TaskType);
     }

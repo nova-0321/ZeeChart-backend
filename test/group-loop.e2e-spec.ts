@@ -7,6 +7,9 @@ import { AppModule } from '../src/app.module.js';
 import { createValidationPipe } from '../src/common/validation.js';
 import { deleteTestAccounts } from './cleanup.js';
 
+/** An index past the end of any list: /move puts the task last (as the removed /parent did). */
+const LAST = 10_000;
+
 // Groups that loop into each other (P inside Q inside P). Nothing writes one now, but old data may
 // hold one (the single-instance race fixed in #50). Every walk over the groups must still come to
 // an end: a write that met the loop used to go round forever, holding the project's lock (or, in
@@ -69,7 +72,7 @@ describe('Groups that loop into each other (e2e)', () => {
     const p = await newTask(projectId, 'P', { type: 'group' });
     const q = await newTask(projectId, 'Q', { type: 'group', parentId: p.id });
     const t = await newTask(projectId, 'T', { parentId: p.id });
-    await call('patch', `/tasks/${t.id}/parent`, { parentId: null }).expect(200);
+    await call('patch', `/tasks/${t.id}/move`, { parentId: null, index: LAST }).expect(200);
     const x = await newTask(projectId, 'X');
     // The loop, written straight into the database as old data would hold it: P inside Q.
     await app
@@ -84,10 +87,13 @@ describe('Groups that loop into each other (e2e)', () => {
 
   it('moving a task under a group of the loop is refused, not walked forever', async () => {
     const { projectId, p, t } = await setUp();
-    const moved = await call('patch', `/tasks/${t.id}/parent`, { parentId: p.id });
+    const moved = await call('patch', `/tasks/${t.id}/move`, { parentId: p.id, index: LAST });
     expect(moved.status).toBe(409);
     expect((moved.body as { message: string }).message).toMatch(LOOP);
-    const dropped = await call('patch', `/tasks/${t.id}/move`, { parentId: p.id, index: 0 });
+    const dropped = await call('patch', `/tasks/${t.id}/move`, {
+      parentId: p.id,
+      index: 0,
+    });
     expect(dropped.status).toBe(409);
     expect(await parentOf(projectId, t.id)).toBeNull();
   });
@@ -130,10 +136,10 @@ describe('Groups that loop into each other (e2e)', () => {
 
   it('moving a group of the loop out to the top level mends it', async () => {
     const { projectId, p, q, t } = await setUp();
-    await call('patch', `/tasks/${p.id}/parent`, { parentId: null }).expect(200);
+    await call('patch', `/tasks/${p.id}/move`, { parentId: null, index: LAST }).expect(200);
     expect(await parentOf(projectId, p.id)).toBeNull();
     expect(await parentOf(projectId, q.id)).toBe(p.id);
     // Mended: a move under P goes through again.
-    await call('patch', `/tasks/${t.id}/parent`, { parentId: p.id }).expect(200);
+    await call('patch', `/tasks/${t.id}/move`, { parentId: p.id, index: LAST }).expect(200);
   });
 });

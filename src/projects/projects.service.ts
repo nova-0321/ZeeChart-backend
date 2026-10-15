@@ -126,21 +126,6 @@ export class ProjectsService {
     if (!project) throw new NotFoundException(`Project ${id} not found`);
     await this.projectRepo.remove(project);
   }
-
-  archive(id: string, userId: string) {
-    return this.setArchived(id, true, userId);
-  }
-
-  /** Bring an archived project back to the active list. */
-  reopen(id: string, userId: string) {
-    return this.setArchived(id, false, userId);
-  }
-
-  private async setArchived(id: string, archived: boolean, userId: string) {
-    const { affected } = await this.projectRepo.update({ id }, { archived });
-    if (!affected) throw new NotFoundException(`Project ${id} not found`);
-    return this.findOne(id, userId);
-  }
 }
 
 /**
