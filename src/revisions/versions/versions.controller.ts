@@ -125,7 +125,13 @@ export class VersionsController {
    */
   @Post(':id/restore')
   @ProjectAccess('editor', projectOfRow(ProjectVersion))
-  @Broadcast({ entity: 'version', action: 'update', project: projectOfRow(ProjectVersion) })
+  // The whole plan put back: the others load it again, rather than be sent every row (#75).
+  @Broadcast({
+    entity: 'version',
+    action: 'update',
+    project: projectOfRow(ProjectVersion),
+    rows: false,
+  })
   async restore(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() userId: string,

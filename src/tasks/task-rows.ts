@@ -1,4 +1,5 @@
-import type { EntityManager } from 'typeorm';
+import { In, type EntityManager } from 'typeorm';
+import { Task } from './entities/task.entity.js';
 import { versionedRows } from '../database/versioned-rows.js';
 
 // The tasks' rows as the history needs them (revisions: snapshots, undo and redo, restoring and
@@ -184,4 +185,9 @@ export async function putAtPlace(
       await manager.query(`UPDATE "tasks" SET "order" = $2 WHERE "id" = $1`, [id, index + 1]);
     }
   }
+}
+
+/** Tasks as the REST API returns them: the rows a write changed, sent with it (#75). */
+export function tasksWithIds(manager: EntityManager, ids: string[]): Promise<Task[]> {
+  return ids.length === 0 ? Promise.resolve([]) : manager.findBy(Task, { id: In(ids) });
 }

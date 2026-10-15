@@ -1,9 +1,10 @@
 # Realtime project sync
 
-When a change is saved, everyone else who has that project open is told right away, so they can
-load it again. The message only says _what_ changed. The data always comes from the REST API.
+When a change is saved, everyone else who has that project open is told right away. The message
+says _what_ changed and, when it can, carries the rows the change wrote (`changes`), so they show
+them without loading the project again. Without `changes`, they load it again from the REST API.
 
-Source: `src/realtime/`. Issues: #28, #18 (sign-in and members).
+Source: `src/realtime/`. Issues: #28, #18 (sign-in and members), #75 (the changed rows).
 
 ## Connecting
 
@@ -57,6 +58,7 @@ interface ChangeMessage {
     'project' | 'task' | 'dependency' | 'event' | 'member' | 'invitation' | 'revision' | 'version';
   action: 'create' | 'update' | 'delete' | 'resync';
   id?: string; // the row the request was about; absent for resync
+  changes?: RowChanges; // the rows it changed (below); absent: load again
 }
 ```
 
@@ -75,6 +77,46 @@ interface ChangeMessage {
 | `POST /revisions/:id/restore`                                                             | `revision` `update`, the revision's id (a task, an event or the project changed)                                 |
 | `POST /projects/:id/versions`, `PATCH /versions/:id`, `POST /versions/:id/restore`        | `version` `create` / `update` (a restore changes the whole project)                                              |
 | `POST /projects`                                                                          | nothing: only the owner changes the project list, and no one is in a new project's room                          |
+
+### The changed rows
+
+A write to a project's tasks, links, events or settings may change more rows than the one it is
+about: a date edit stretches the groups around the task and pushes the tasks linked after it, a
+move numbers the other tasks of its level again, a deleted task takes its links with it. `changes`
+has all of them, read after the write (so with their new `version`):
+
+```ts
+interface RowChanges {
+  tasks?: { upsert: Task[]; delete: string[] }; // as GET /tasks returns them
+  dependencies?: { upsert: TaskDependency[]; delete: string[] }; // as GET /dependencies
+  events?: { upsert: ProjectEvent[]; delete: string[] }; // as GET /events
+  project?: {
+    id: string;
+    name: string;
+    description: string | null;
+    archived: boolean;
+    version: number;
+  };
+}
+```
+
+- A kind the write didn't change is absent, so `{}` is a write that changed no row (a version
+  saved or starred).
+- `project` is only the project's own fields: your role in it is not in it (it is per person).
+- **No `changes`** (load the project again, as before #75): over 200 rows changed
+  (`MAX_CHANGED_ROWS`), a restore (`POST /versions/:id/restore`, `POST /revisions/:id/restore`),
+  `resync`, a project deleted, and member and invitation messages.
+- **The tab that made the change** isn't sent the message. The answer of `POST` / `PATCH /tasks`
+  (and `/:id/parent`, `/:id/move`, `/:id/type`), `POST` / `PATCH /dependencies` and `POST` /
+  `PATCH /events` carries the same `changes` (the row it answers with is in it too). A delete
+  answers 204 with no body: after its own delete, a tab loads the project again.
+- Writes to one project are made one after another (ProjectWriteLock), and their messages leave in
+  that order as a rule (each after its own answer). A row's `version` only goes up, so a row older
+  than the one shown can be ignored, should two ever arrive the other way round; a
+  task only numbered again keeps its version (the history doesn't count that as a change of its
+  own), so take a row whose version is the same as the one shown.
+- The lists are sorted as the REST API sorts them (tasks by `order`, then `createdAt`, then `id`;
+  links by `createdAt`; events by `startDate`, then `createdAt`): sort again after applying rows.
 
 ### Your own memberships
 
@@ -148,8 +190,9 @@ that leaves the room disappears from the presence list: clients drop its cursor 
 - **After the save only.** The message goes out when the whole request has succeeded, so every
   transaction in it has committed.
 - **One message per request.** A request can save many rows: a date edit can refit groups and
-  push linked tasks. It is still one message, about the row the request was about. Reload the whole
-  list (tasks and links together), not that one row.
+  push linked tasks. It is still one message, about the row the request was about, and its
+  `changes` has every row it changed. Without `changes`, reload the whole list (tasks and links
+  together), not that one row.
 - **Refused requests (4xx) send nothing.** They saved nothing.
 - **Failures (5xx) send `resync`.** A write to a project's tasks, links, events or settings is one
   transaction and saves nothing when it fails; other writes (members) may have saved part of their
@@ -159,6 +202,8 @@ that leaves the room disappears from the presence list: clients drop its cursor 
 
 ## What the client should do
 
+- With `changes`: apply them (put each row in its list, take out the deleted ids, merge the
+  project's fields) and load nothing. Without, as below.
 - `task` or `dependency`: reload the tasks and links of the project.
 - `event`: reload the events.
 - `project` `update`: reload the project (name, archived).

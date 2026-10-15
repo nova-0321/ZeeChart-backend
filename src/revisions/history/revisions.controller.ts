@@ -51,7 +51,13 @@ export class RevisionsController {
    */
   @Post(':id/restore')
   @ProjectAccess('editor', projectOfRow(Revision))
-  @Broadcast({ entity: 'revision', action: 'update', project: projectOfRow(Revision) })
+  // A row put back as it was: the others load the project again, rather than be sent it (#75).
+  @Broadcast({
+    entity: 'revision',
+    action: 'update',
+    project: projectOfRow(Revision),
+    rows: false,
+  })
   async restore(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() userId: string,

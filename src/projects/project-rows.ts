@@ -28,6 +28,18 @@ export async function projectRowOf(
   return row ?? null;
 }
 
+/** The project's own fields and version, as a write's changes send them (#75); null when gone. */
+export async function projectFieldsOf(
+  manager: EntityManager,
+  projectId: string,
+): Promise<(ProjectRow & { version: number }) | null> {
+  const [row] = await manager.query<(ProjectRow & { version: number })[]>(
+    `SELECT "id", "name", "description", "archived", "version" FROM "projects" WHERE "id" = $1`,
+    [projectId],
+  );
+  return row ?? null;
+}
+
 /** Writes its name, description and archived flag back as they were (undo and redo). */
 export async function writeProjectRow(manager: EntityManager, project: ProjectRow) {
   await manager.query(

@@ -11,9 +11,11 @@ import { DataSource } from 'typeorm';
 import type { AuthedRequest } from '../auth/auth.guard.js';
 import { ProjectWriteLock } from '../database/project-write-lock.js';
 import { BROADCAST, type BroadcastOptions } from '../realtime/broadcast.decorator.js';
+import type { ChangedRowsRequest, RowChanges } from '../realtime/realtime.types.js';
 import type { Snapshot } from './history/revision-diff.js';
 import { assertNoConflict, targetOf, versionIn } from './history/conflicts.js';
 import { loadSnapshot } from './revision-state.js';
+import { changedRows } from './row-changes.js';
 import { RevisionsService } from './history/revisions.service.js';
 import { VersionsService } from './versions/versions.service.js';
 
@@ -99,6 +101,16 @@ export class RevisionInterceptor implements NestInterceptor {
       });
       // The answer carries the versions the change gave (its rows were read before it).
       withVersions(answer, versions);
+      // And the rows it changed (#75), for the change message (BroadcastInterceptor, around this
+      // one) and for the tab that made it, which the message skips. Not for a restore (rows:
+      // false): whoever has the project open loads it again.
+      if (options.rows !== false) {
+        const changes = await changedRows(manager, projectId, before, after);
+        if (changes) {
+          (request as RevisionRequest & ChangedRowsRequest).changedRows = changes;
+          withChanges(answer, options, changes);
+        }
+      }
       return answer;
     });
     // Once it is saved, now and then a version of the whole project (VersionsService.autoSave): a
@@ -126,6 +138,19 @@ export class RevisionInterceptor implements NestInterceptor {
 }
 
 const text = (value: unknown) => (typeof value === 'string' ? value : undefined);
+
+/** The routes whose answer (the row they wrote) also carries every row the write changed. */
+const ANSWERS_WITH_CHANGES: ReadonlySet<string> = new Set(['task', 'dependency', 'event']);
+
+/**
+ * Adds `changes` to the answer of a task, link or event create or update (one row, not a list): the
+ * tab that made the change is not sent its message, and a date edit may have moved other rows.
+ */
+function withChanges(body: unknown, options: BroadcastOptions, changes: RowChanges) {
+  if (!ANSWERS_WITH_CHANGES.has(options.entity) || options.action === 'delete') return;
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return;
+  (body as { changes?: RowChanges }).changes = changes;
+}
 
 /** Puts the new version on each row of an answer (one row or a list) that the change gave one. */
 function withVersions(body: unknown, versions: Map<string, number>) {

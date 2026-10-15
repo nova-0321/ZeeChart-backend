@@ -13,9 +13,45 @@ export type RealtimeEntity =
  */
 export type RealtimeAction = 'create' | 'update' | 'delete' | 'resync';
 
+/** The rows of one kind a write changed: each as the REST API returns it, and the ids it deleted. */
+export interface RowChange<Row = object> {
+  upsert: Row[];
+  delete: string[];
+}
+
+/** The project's own fields after a write (a member's role in it is not here: it is per person). */
+export interface ProjectFields {
+  id: string;
+  name: string;
+  description: string | null;
+  archived: boolean;
+  version: number;
+}
+
 /**
- * Sent to everyone with the project open, after the change is saved. Deliberately small: it only
- * says "go and fetch again"; the data itself always comes from the REST API.
+ * Every row a write changed (#75): the row it was about and the ones it moved with it (linked
+ * tasks pushed, a group stretched, siblings renumbered). A kind it didn't change is absent, so
+ * `{}` is a write that changed no row (a version saved). Not sent over MAX_CHANGED_ROWS rows, nor
+ * for a restore: then whoever needs the project loads it again.
+ */
+export interface RowChanges {
+  tasks?: RowChange;
+  dependencies?: RowChange;
+  events?: RowChange;
+  project?: ProjectFields;
+}
+
+/** A request whose rows changes were worked out (by RevisionInterceptor, inside the broadcast). */
+export interface ChangedRowsRequest {
+  changedRows?: RowChanges;
+}
+
+/** Above this many rows changed, a change carries none (loading the project is cheaper then). */
+export const MAX_CHANGED_ROWS = 200;
+
+/**
+ * Sent to everyone with the project open, after the change is saved. With `changes`, it is all a
+ * tab needs to show the project as it is now; without, it says "go and fetch again" (the REST API).
  */
 export interface ChangeMessage {
   projectId: string;
@@ -23,6 +59,8 @@ export interface ChangeMessage {
   action: RealtimeAction;
   /** The row the request was about (absent for `resync`). */
   id?: string;
+  /** The rows the write changed (see RowChanges; absent: load again). */
+  changes?: RowChanges;
 }
 
 /** The socket.io event name of a ChangeMessage. */

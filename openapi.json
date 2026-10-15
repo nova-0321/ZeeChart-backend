@@ -186,11 +186,23 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "The ProjectEvent, with every row the write changed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProjectEvent"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ProjectEvent"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "changes": {
+                          "$ref": "#/components/schemas/RowChangesDto"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -240,11 +252,23 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "The ProjectEvent, with every row the write changed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProjectEvent"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ProjectEvent"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "changes": {
+                          "$ref": "#/components/schemas/RowChangesDto"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -1013,11 +1037,23 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "The Task, with every row the write changed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Task"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Task"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "changes": {
+                          "$ref": "#/components/schemas/RowChangesDto"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -1067,11 +1103,23 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "The Task, with every row the write changed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Task"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Task"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "changes": {
+                          "$ref": "#/components/schemas/RowChangesDto"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -1178,11 +1226,23 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "The Task, with every row the write changed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Task"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Task"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "changes": {
+                          "$ref": "#/components/schemas/RowChangesDto"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -1243,11 +1303,23 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "The Task, with every row the write changed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Task"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Task"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "changes": {
+                          "$ref": "#/components/schemas/RowChangesDto"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -1308,11 +1380,23 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "The Task, with every row the write changed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Task"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Task"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "changes": {
+                          "$ref": "#/components/schemas/RowChangesDto"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -1391,11 +1475,23 @@
         },
         "responses": {
           "201": {
-            "description": "",
+            "description": "The TaskDependency, with every row the write changed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TaskDependency"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/TaskDependency"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "changes": {
+                          "$ref": "#/components/schemas/RowChangesDto"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -1446,11 +1542,23 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "The TaskDependency, with every row the write changed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TaskDependency"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/TaskDependency"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "changes": {
+                          "$ref": "#/components/schemas/RowChangesDto"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -2405,6 +2513,120 @@
           "updatedAt",
           "project"
         ]
+      },
+      "TaskChangesDto": {
+        "type": "object",
+        "properties": {
+          "upsert": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            },
+            "description": "The rows it created or changed, as the REST API returns them"
+          },
+          "delete": {
+            "description": "The ids of the rows it deleted",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "upsert",
+          "delete"
+        ]
+      },
+      "DependencyChangesDto": {
+        "type": "object",
+        "properties": {
+          "upsert": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskDependency"
+            },
+            "description": "The rows it created or changed, as the REST API returns them"
+          },
+          "delete": {
+            "description": "The ids of the rows it deleted",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "upsert",
+          "delete"
+        ]
+      },
+      "EventChangesDto": {
+        "type": "object",
+        "properties": {
+          "upsert": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectEvent"
+            },
+            "description": "The rows it created or changed, as the REST API returns them"
+          },
+          "delete": {
+            "description": "The ids of the rows it deleted",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "upsert",
+          "delete"
+        ]
+      },
+      "ProjectFieldsDto": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "description",
+          "id",
+          "name",
+          "archived",
+          "version"
+        ]
+      },
+      "RowChangesDto": {
+        "type": "object",
+        "properties": {
+          "tasks": {
+            "$ref": "#/components/schemas/TaskChangesDto"
+          },
+          "dependencies": {
+            "$ref": "#/components/schemas/DependencyChangesDto"
+          },
+          "events": {
+            "$ref": "#/components/schemas/EventChangesDto"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ProjectFieldsDto"
+          }
+        }
       },
       "CreateEventDto": {
         "type": "object",

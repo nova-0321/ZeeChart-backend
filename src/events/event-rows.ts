@@ -1,4 +1,5 @@
-import type { EntityManager } from 'typeorm';
+import { In, type EntityManager } from 'typeorm';
+import { ProjectEvent } from './entities/project-event.entity.js';
 import { versionedRows } from '../database/versioned-rows.js';
 
 // The events' rows as the history needs them (revisions: snapshots, undo and redo, restoring and
@@ -56,4 +57,9 @@ export async function deleteEventsExcept(
     `DELETE FROM "events" WHERE "projectId" = $1 AND NOT ("id" = ANY($2::uuid[]))`,
     [projectId, keep],
   );
+}
+
+/** Events as the REST API returns them: the rows a write changed, sent with it (#75). */
+export function eventsWithIds(manager: EntityManager, ids: string[]): Promise<ProjectEvent[]> {
+  return ids.length === 0 ? Promise.resolve([]) : manager.findBy(ProjectEvent, { id: In(ids) });
 }

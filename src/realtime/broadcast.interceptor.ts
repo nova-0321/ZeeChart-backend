@@ -12,7 +12,12 @@ import { from, type Observable, switchMap, tap } from 'rxjs';
 import { DataSource } from 'typeorm';
 import { BROADCAST, type BroadcastOptions } from './broadcast.decorator.js';
 import { RealtimeService } from './realtime.service.js';
-import { CLIENT_ID_HEADER, clientIdFrom, type ChangeMessage } from './realtime.types.js';
+import {
+  CLIENT_ID_HEADER,
+  clientIdFrom,
+  type ChangedRowsRequest,
+  type ChangeMessage,
+} from './realtime.types.js';
 
 const isServerError = (error: unknown) =>
   !(error instanceof HttpException) || error.getStatus() >= 500;
@@ -22,7 +27,8 @@ const isServerError = (error: unknown) =>
  * has committed by then, and an action of several saves (a date edit that refits groups and moves
  * linked tasks) is still one message. The tab that made the change (X-Client-Id) is skipped.
  *
- * - success: { entity, action, id }
+ * - success: { entity, action, id, changes }: `changes` are the rows it changed, when the history
+ *   (RevisionInterceptor, which runs inside this one) worked them out (see RowChanges)
  * - 4xx: nothing (refused before anything was saved)
  * - 5xx: { action: 'resync' }: it may have saved part of its work, so the others load again
  */
@@ -55,8 +61,15 @@ export class BroadcastInterceptor implements NestInterceptor {
               const id = options.action === 'create' ? idOf(body) : text(request.params.id);
               const project = projectId ?? projectOfBody(body);
               if (project) {
+                const changes = (request as Request & ChangedRowsRequest).changedRows;
                 this.send(
-                  { projectId: project, entity: options.entity, action: options.action, id },
+                  {
+                    projectId: project,
+                    entity: options.entity,
+                    action: options.action,
+                    id,
+                    ...(changes ? { changes } : {}),
+                  },
                   sender,
                   userId,
                 );
