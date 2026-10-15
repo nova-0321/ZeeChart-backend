@@ -125,6 +125,16 @@ describe('Conflicts (e2e)', () => {
     const refused = await patch(olive, task.id, { name: 'Olive’s name' }, 1);
     expect(refused.status).toBe(409);
     const body = refused.body as ConflictBody;
+    // The envelope exactly as docs/conflicts.md shows it.
+    expect(Object.keys(body).sort()).toEqual([
+      'details',
+      'error',
+      'message',
+      'path',
+      'statusCode',
+      'timestamp',
+    ]);
+    expect(body).toMatchObject({ statusCode: 409, error: 'CONFLICT', path: `/tasks/${task.id}` });
     expect(body.message).toBe(
       "Bob changed the name of “Bob’s name” meanwhile. Your change wasn't saved",
     );

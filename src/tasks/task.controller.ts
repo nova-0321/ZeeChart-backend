@@ -1,3 +1,4 @@
+import { IfMatch } from '../revisions/if-match.decorator.js';
 import {
   Body,
   Controller,
@@ -11,7 +12,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard.js';
 import {
   ProjectAccess,
@@ -31,6 +32,7 @@ import { TaskService } from './task.service.js';
 
 // Each route says the role it needs in the project (@ProjectAccess: viewers read, editors change;
 // 404 for non-members) and each write who is told after it (@Broadcast: everyone with it open).
+@ApiTags('tasks')
 @Controller('tasks')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
@@ -53,6 +55,7 @@ export class TaskController {
 
   /** Change any of name, description, dates, progress, priority and color. */
   @Patch(':id')
+  @IfMatch()
   @ProjectAccess('editor', projectOfRow(Task))
   @Broadcast({ entity: 'task', action: 'update', project: projectOfRow(Task) })
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTaskDto) {
@@ -61,6 +64,7 @@ export class TaskController {
 
   /** Sub-tasks of a deleted group are kept and become top-level. */
   @Delete(':id')
+  @IfMatch()
   @HttpCode(204)
   @ProjectAccess('editor', projectOfRow(Task))
   @Broadcast({ entity: 'task', action: 'delete', project: projectOfRow(Task) })
@@ -70,6 +74,7 @@ export class TaskController {
 
   /** Move a task under a group, or send { "parentId": null } to make it top-level. */
   @Patch(':id/parent')
+  @IfMatch()
   @ProjectAccess('editor', projectOfRow(Task))
   @Broadcast({ entity: 'task', action: 'update', project: projectOfRow(Task) })
   setParent(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetParentDto) {
@@ -81,6 +86,7 @@ export class TaskController {
    * index among the tasks there. The tasks of that level are numbered again to keep that order.
    */
   @Patch(':id/move')
+  @IfMatch()
   @ProjectAccess('editor', projectOfRow(Task))
   @Broadcast({ entity: 'task', action: 'update', project: projectOfRow(Task) })
   move(@Param('id', ParseUUIDPipe) id: string, @Body() dto: MoveTaskDto) {
@@ -88,6 +94,7 @@ export class TaskController {
   }
 
   @Patch(':id/type')
+  @IfMatch()
   @ProjectAccess('editor', projectOfRow(Task))
   @Broadcast({ entity: 'task', action: 'update', project: projectOfRow(Task) })
   changeType(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ChangeTypeDto) {

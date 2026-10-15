@@ -47,7 +47,7 @@ export class TaskDependency {
   @Column({ type: 'int', default: 0 })
   version: number;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
   // Deleting either task deletes the dependency with it (ON DELETE CASCADE in the database).

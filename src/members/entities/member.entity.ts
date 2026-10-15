@@ -53,6 +53,6 @@ export class Member {
   @JoinColumn({ name: 'addedById' })
   addedBy: Relation<User> | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   joinedAt: Date;
 }

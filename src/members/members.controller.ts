@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import {
@@ -38,6 +38,7 @@ import { MembersService } from './members.service.js';
 // Every member sees who else is in the project; only its owners add, change or remove members.
 // Each change is told to everyone with the project open (@Broadcast).
 
+@ApiTags('members')
 @Controller('projects/:id/members')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
@@ -56,6 +57,7 @@ export class ProjectMembersController {
   // "no one has signed up with this email" with no tighter limit, so emails could be looked up.
 }
 
+@ApiTags('members')
 @Controller('members')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
@@ -86,6 +88,7 @@ export class MembersController {
 // Invitations (#20): a place kept for someone with no account yet, taken up with a secret link (see
 // InviteLinksController). Any member sees them; owners invite, cancel and make new links.
 
+@ApiTags('invitations')
 @Controller('projects/:id/invitations')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
@@ -118,6 +121,7 @@ export class ProjectInvitationsController {
   }
 }
 
+@ApiTags('invitations')
 @Controller('invitations')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
@@ -151,6 +155,7 @@ export class InvitationsController {
 // Invite links (#20): opened by someone who is not in the project yet, maybe not even signed in.
 // The link's secret is what lets them in; nothing about a project can be found without one.
 
+@ApiTags('invitations')
 @Controller('invites')
 @UseGuards(ProjectAccessGuard)
 export class InviteLinksController {

@@ -58,6 +58,6 @@ export class Invitation {
   @Column({ type: 'timestamptz' })
   expiresAt: Date;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

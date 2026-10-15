@@ -35,8 +35,16 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Format
+        run: npm run format:check
+
+      # Known vulnerabilities in any dependency, dev tools included (they run here, on the build).
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      # With coverage: fails under the floors in vitest.config.ts.
       - name: Unit tests
-        run: npm test
+        run: npm run test:cov
 
       - name: Build
         run: npm run build

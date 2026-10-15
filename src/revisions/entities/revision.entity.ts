@@ -16,7 +16,7 @@ import {
   REVISION_ENTITIES,
   type RevisionAction,
   type RevisionEntity,
-} from '../revision-diff.js';
+} from '../history/revision-diff.js';
 
 /**
  * One change to a project, task or event: its state before and after, who made it, and a sentence
@@ -94,6 +94,6 @@ export class Revision {
   @Column({ type: 'boolean', default: false })
   primary: boolean;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

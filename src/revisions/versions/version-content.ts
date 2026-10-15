@@ -1,4 +1,10 @@
-import type { EventState, LinkState, ProjectState, Snapshot, TaskState } from './revision-diff.js';
+import type {
+  EventState,
+  LinkState,
+  ProjectState,
+  Snapshot,
+  TaskState,
+} from '../history/revision-diff.js';
 
 /** A snapshot as a version keeps it (plain arrays, for JSON). */
 export interface VersionContent {

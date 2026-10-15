@@ -1,3 +1,4 @@
+import { IfMatch } from '../revisions/if-match.decorator.js';
 import {
   Body,
   Controller,
@@ -11,7 +12,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard.js';
 import {
   ProjectAccess,
@@ -28,6 +29,7 @@ import { EventsService } from './events.service.js';
 
 // Each route says the role it needs in the project (@ProjectAccess: viewers read, editors change;
 // 404 for non-members) and each write who is told after it (@Broadcast: everyone with it open).
+@ApiTags('events')
 @Controller('events')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
@@ -50,6 +52,7 @@ export class EventsController {
 
   /** Change any of name, color and dates. */
   @Patch(':id')
+  @IfMatch()
   @ProjectAccess('editor', projectOfRow(ProjectEvent))
   @Broadcast({ entity: 'event', action: 'update', project: projectOfRow(ProjectEvent) })
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateEventDto) {
@@ -57,6 +60,7 @@ export class EventsController {
   }
 
   @Delete(':id')
+  @IfMatch()
   @HttpCode(204)
   @ProjectAccess('editor', projectOfRow(ProjectEvent))
   @Broadcast({ entity: 'event', action: 'delete', project: projectOfRow(ProjectEvent) })

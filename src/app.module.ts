@@ -6,8 +6,6 @@ import { envValidationSchema } from './config/env.validation.js';
 import { throttlerOptions } from './common/throttling.js';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
-import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { HttpLoggerMiddleware } from './common/http-logger.middleware.js';
 import { EventsModule } from './events/events.module.js';
@@ -46,9 +44,7 @@ import { DatabaseModule } from './database/database.module.js';
     // written before the others are told of the change.
     RevisionsModule,
   ],
-  controllers: [AppController],
   providers: [
-    AppService,
     // Registered here (not in main.ts) so the filter can inject HttpAdapterHost.
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     // HTTP only: socket messages have their own limits (see HttpThrottlerGuard).

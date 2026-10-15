@@ -3,7 +3,7 @@ import { linksOf } from '../dependencies/link-rows.js';
 import { eventRowsOf } from '../events/event-rows.js';
 import { projectRowOf } from '../projects/project-rows.js';
 import { taskRowsOf } from '../tasks/task-rows.js';
-import type { Snapshot } from './revision-diff.js';
+import type { Snapshot } from './history/revision-diff.js';
 
 // A project as stored right now: its row, tasks, events and links, in the plain shape revisions
 // keep (dates as "YYYY-MM-DD"). Each part is read by the domain that owns it (#55), with plain

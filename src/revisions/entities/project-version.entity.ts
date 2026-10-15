@@ -10,7 +10,7 @@ import {
 } from 'typeorm';
 import { User } from '../../auth/entities/user.entity.js';
 import { Project } from '../../projects/entities/project.entity.js';
-import type { VersionContent } from '../version-content.js';
+import type { VersionContent } from '../versions/version-content.js';
 
 export const VERSION_KINDS = ['auto', 'manual', 'before-restore'] as const;
 export type VersionKind = (typeof VERSION_KINDS)[number];
@@ -55,6 +55,6 @@ export class ProjectVersion {
   @JoinColumn({ name: 'createdById' })
   createdBy: Relation<User> | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

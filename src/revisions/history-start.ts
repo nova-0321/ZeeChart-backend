@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { EntityManager } from 'typeorm';
 import { ProjectVersion } from './entities/project-version.entity.js';
 import { Revision } from './entities/revision.entity.js';
-import type { ProjectState } from './revision-diff.js';
+import type { ProjectState } from './history/revision-diff.js';
 
 /**
  * The start of a new project's history, written by the projects domain in the transaction that

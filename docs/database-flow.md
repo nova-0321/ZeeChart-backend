@@ -86,14 +86,14 @@ sequenceDiagram
 
 ## Who does what
 
-| Piece      | Does                                                                 | Shouldn't                                           | File                  |
-|------------|----------------------------------------------------------------------|-----------------------------------------------------|-----------------------|
-| Module     | Declares which controllers, providers and imports belong together.   | Contain logic.                                      | `charts.module.ts`    |
-| Controller | Maps routes, parses params and body (DTOs, pipes), returns the response. | Query the database or hold business rules.      | `charts.controller.ts`|
-| Service    | Business rules: lookups, checks, throwing `NotFoundException`, combining repositories. | Know about HTTP requests or responses. | `charts.service.ts`   |
-| Repository | Typed queries for one entity, provided by TypeORM.                   | Be written by hand for simple CRUD.                 | injected, no file     |
-| Entity     | Maps a class to a table and its columns.                             | Change the schema without a migration (`synchronize` is off). | `chart.entity.ts` |
-| DataSource | One shared connection pool for the whole app (size: `DB_POOL_SIZE`). Inside a write, use `RequestTransaction` instead. | Be created per feature.                             | `database.module.ts`  |
+| Piece      | Does                                                                                                                   | Shouldn't                                                     | File                   |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ---------------------- |
+| Module     | Declares which controllers, providers and imports belong together.                                                     | Contain logic.                                                | `charts.module.ts`     |
+| Controller | Maps routes, parses params and body (DTOs, pipes), returns the response.                                               | Query the database or hold business rules.                    | `charts.controller.ts` |
+| Service    | Business rules: lookups, checks, throwing `NotFoundException`, combining repositories.                                 | Know about HTTP requests or responses.                        | `charts.service.ts`    |
+| Repository | Typed queries for one entity, provided by TypeORM.                                                                     | Be written by hand for simple CRUD.                           | injected, no file      |
+| Entity     | Maps a class to a table and its columns.                                                                               | Change the schema without a migration (`synchronize` is off). | `chart.entity.ts`      |
+| DataSource | One shared connection pool for the whole app (size: `DB_POOL_SIZE`). Inside a write, use `RequestTransaction` instead. | Be created per feature.                                       | `database.module.ts`   |
 
 ## The example feature in code
 

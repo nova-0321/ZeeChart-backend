@@ -3,12 +3,12 @@ import { RequestMethod } from '@nestjs/common';
 import { GUARDS_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants.js';
 import { NO_PROJECT_CHECK, PROJECT_ACCESS, ProjectAccessGuard } from './project-access.js';
 
-// Every route outside sign-in, health and the root works on someone's project, so it must say how
+// Every route outside sign-in and health works on someone's project, so it must say how
 // to find it and the role it needs (@ProjectAccess) or that there's nothing to check
 // (@NoProjectCheck), and its controller must run ProjectAccessGuard. A new route without them fails
 // here, instead of quietly letting anyone at other people's projects.
 
-const OPEN_CONTROLLERS = new Set(['auth', 'health', '/', '']);
+const OPEN_CONTROLLERS = new Set(['auth', 'health']);
 
 const modules = import.meta.glob<Record<string, unknown>>('../**/*.controller.ts', {
   eager: true,

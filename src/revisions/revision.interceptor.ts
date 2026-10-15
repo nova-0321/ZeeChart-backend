@@ -11,11 +11,11 @@ import { DataSource } from 'typeorm';
 import type { AuthedRequest } from '../auth/auth.guard.js';
 import { ProjectWriteLock } from '../database/project-write-lock.js';
 import { BROADCAST, type BroadcastOptions } from '../realtime/broadcast.decorator.js';
-import type { Snapshot } from './revision-diff.js';
-import { assertNoConflict, targetOf, versionIn } from './conflicts.js';
+import type { Snapshot } from './history/revision-diff.js';
+import { assertNoConflict, targetOf, versionIn } from './history/conflicts.js';
 import { loadSnapshot } from './revision-state.js';
-import { RevisionsService } from './revisions.service.js';
-import { VersionsService } from './versions.service.js';
+import { RevisionsService } from './history/revisions.service.js';
+import { VersionsService } from './versions/versions.service.js';
 
 /** What a route may add to its revisions (the restore route says what it restored). */
 export interface RevisionRequest extends AuthedRequest {

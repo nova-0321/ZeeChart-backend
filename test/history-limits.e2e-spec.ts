@@ -6,8 +6,8 @@ import { DataSource, Repository } from 'typeorm';
 import { AppModule } from '../src/app.module.js';
 import { createValidationPipe } from '../src/common/validation.js';
 import { KEEP_MANUAL_VERSIONS, MAX_STARRED_VERSIONS } from '../src/revisions/history-limits.js';
-import { RevisionsService } from '../src/revisions/revisions.service.js';
-import { VersionsService } from '../src/revisions/versions.service.js';
+import { RevisionsService } from '../src/revisions/history/revisions.service.js';
+import { VersionsService } from '../src/revisions/versions/versions.service.js';
 import { deleteTestAccounts } from './cleanup.js';
 
 // How much history a project keeps (#54): versions saved by hand and starred ones are capped, a
@@ -75,8 +75,17 @@ describe('History limits (e2e)', () => {
     ).body as { id: string };
   const rename = (taskId: string, name: string) =>
     call('patch', `/tasks/${taskId}`, { name }).expect(200);
-  const versions = async (projectId: string) =>
-    (await call('get', `/projects/${projectId}/versions`).expect(200)).body as Version[];
+  /** Every version of the project, newest first: page after page (the list comes 50 at a time). */
+  const versions = async (projectId: string) => {
+    const all: Version[] = [];
+    for (;;) {
+      const before = all.length > 0 ? `?before=${all.at(-1)!.id}` : '';
+      const page = (await call('get', `/projects/${projectId}/versions${before}`).expect(200))
+        .body as Version[];
+      all.push(...page);
+      if (page.length === 0) return all;
+    }
+  };
   /** "Save a version now": 201 when it made one, 200 when it kept the newest. */
   const saveNow = async (projectId: string, status = 201) =>
     (await call('post', `/projects/${projectId}/versions`).expect(status)).body as Version;

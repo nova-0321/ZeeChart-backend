@@ -7,47 +7,56 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
-import { AuthGuard } from '../auth/auth.guard.js';
-import { CurrentUser } from '../auth/current-user.decorator.js';
+import { AuthGuard } from '../../auth/auth.guard.js';
+import { CurrentUser } from '../../auth/current-user.decorator.js';
 import {
   ProjectAccess,
   ProjectAccessGuard,
   projectInParam,
   projectOfRow,
-} from '../projects/project-access.js';
-import type { MyProjectDto } from '../projects/dto/my-project.dto.js';
-import { Broadcast, NoBroadcast } from '../realtime/broadcast.decorator.js';
+} from '../../projects/project-access.js';
+import type { MyProjectDto } from '../../projects/dto/my-project.dto.js';
+import { Broadcast, NoBroadcast } from '../../realtime/broadcast.decorator.js';
 import {
   type RestoreVersionResultDto,
   StarVersionDto,
   VersionDto,
   type VersionSummaryDto,
 } from './dto/version.dto.js';
-import { ProjectVersion } from './entities/project-version.entity.js';
-import { SAVE_VERSION_LIMIT } from './history-limits.js';
-import type { RevisionRequest } from './revision.interceptor.js';
+import { PageQueryDto } from '../history/dto/page-query.dto.js';
+import { ProjectVersion } from '../entities/project-version.entity.js';
+import { SAVE_VERSION_LIMIT } from '../history-limits.js';
+import type { RevisionRequest } from '../revision.interceptor.js';
 import { VersionsService } from './versions.service.js';
 
 // Versions of a whole project: every member sees them, editors save, star and restore them.
 
+@ApiTags('versions')
 @Controller('projects/:id/versions')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()
 export class ProjectVersionsController {
   constructor(private readonly versions: VersionsService) {}
 
-  /** The project's versions, newest first (without their contents). */
+  /**
+   * The project's versions, newest first (without their contents), 50 at a time (up to 100 with
+   * `limit`). For the next page, pass the id of the last one as `before`.
+   */
   @Get()
   @ProjectAccess('viewer', projectInParam())
-  list(@Param('id', ParseUUIDPipe) projectId: string): Promise<VersionSummaryDto[]> {
-    return this.versions.list(projectId);
+  list(
+    @Param('id', ParseUUIDPipe) projectId: string,
+    @Query() query: PageQueryDto,
+  ): Promise<VersionSummaryDto[]> {
+    return this.versions.list(projectId, query.before, query.limit);
   }
 
   /** "Save a version now": the project as it is. */
@@ -73,6 +82,7 @@ export class ProjectVersionsController {
   }
 }
 
+@ApiTags('versions')
 @Controller('versions')
 @UseGuards(AuthGuard, ProjectAccessGuard)
 @ApiBearerAuth()

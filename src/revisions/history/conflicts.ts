@@ -1,8 +1,8 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { Request } from 'express';
 import type { EntityManager } from 'typeorm';
-import { accountNameOf } from '../auth/accounts.js';
-import type { RealtimeEntity } from '../realtime/realtime.types.js';
+import { accountNameOf } from '../../auth/accounts.js';
+import type { RealtimeEntity } from '../../realtime/realtime.types.js';
 import {
   EVENT_FIELDS,
   LINK_FIELDS,
@@ -11,7 +11,7 @@ import {
   type Snapshot,
   TASK_FIELDS,
 } from './revision-diff.js';
-import { ROWS } from './rows.js';
+import { ROWS } from '../rows.js';
 
 // Conflict checks (#21; see docs/conflicts.md). A write may say which version of the row it was
 // made from (`If-Match: <version>`). It is refused (409) only when someone else changed, since that
