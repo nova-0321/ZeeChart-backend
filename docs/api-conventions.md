@@ -46,6 +46,11 @@ entity `notFound` has no name for.
 - **A task's place**, its group included, changes with `PATCH /tasks/:id/move { parentId, index }`
   (an index past the end puts it last). There is no `/parent` route. Dropped on a plain task, that
   task becomes a group holding it.
+- **A group's `progress` is the average of its tasks** (#80): the plain mean of its direct tasks
+  (a group inside counts with its own average), milestones left out, 0 with nothing to count,
+  rounded to a whole percent. The server sets it at the end of every write (RevisionInterceptor:
+  `fitGroupProgress`), so it is in the write's history and `changes` like a group's dates. Sending
+  a `progress` for a group is refused (400), never ignored.
 - **A task's `order` is its place in its level** (a group's tasks, or the top level), and every
   level is numbered 1, 2, 3... after every write: a new task (its `order` is the place it takes;
   none: last), a delete, a move (the level it leaves closes up too), undo, redo, restoring a

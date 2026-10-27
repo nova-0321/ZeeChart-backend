@@ -129,6 +129,16 @@ describe('TasksService.create', () => {
     expect(manager.save).not.toHaveBeenCalled();
   });
 
+  it("refuses a progress for a new group (it is its tasks' average, #80), and saves nothing", async () => {
+    await expect(
+      service.create(formBody({ type: 'group', progress: 40 } as never)),
+    ).rejects.toThrow("A group's progress is the average of its tasks");
+    expect(manager.save).not.toHaveBeenCalled();
+    // A new group without one is fine, and so is a task with one.
+    await expect(service.create(formBody({ type: 'group' } as never))).resolves.toBeDefined();
+    await expect(service.create(formBody({ progress: 40 }))).resolves.toBeDefined();
+  });
+
   it('only allows a group as the parent', async () => {
     repo.findOneByOrFail.mockResolvedValue({ id: GROUP_ID, type: 'task', projectId: PROJECT_ID });
     await expect(service.create(formBody({ parentId: GROUP_ID }))).rejects.toThrow(
@@ -304,6 +314,20 @@ describe('TasksService.update', () => {
       scheduler as never,
       projects as never,
     );
+  });
+
+  it("refuses a group's progress (#80) and saves nothing; a task's is saved", async () => {
+    repo.findOneByOrFail.mockResolvedValue({ ...stored(), type: 'group' });
+    await expect(service.update('t1', { progress: 40 })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+    // The rest of a group still changes.
+    await expect(service.update('t1', { name: 'Phase 2' })).resolves.toMatchObject({
+      name: 'Phase 2',
+    });
+    repo.findOneByOrFail.mockResolvedValue({ ...stored(), type: 'task' });
+    await expect(service.update('t1', { progress: 40 })).resolves.toMatchObject({ progress: 40 });
   });
 
   it('changes only the fields that were sent', async () => {
