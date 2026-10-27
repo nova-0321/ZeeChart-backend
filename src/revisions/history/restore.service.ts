@@ -148,7 +148,8 @@ export class RestoreService {
       // null clears it (it had none then).
       description: state.description as string | undefined,
       priority: state.priority as 'medium',
-      progress: state.progress,
+      // A group's is the average of its tasks (#80), set again once the restore is written.
+      ...(state.type === 'group' ? {} : { progress: state.progress }),
       color: state.color,
       startDate: state.startDate as unknown as Date,
       endDate: state.endDate as unknown as Date,

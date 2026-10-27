@@ -183,6 +183,14 @@ describe('currentOf', () => {
 });
 
 describe('matches', () => {
+  it("ignores a group's progress: it moves with anyone's tasks, and is set again after (#80)", () => {
+    const group = (progress: number) => task('g', { type: 'group', progress });
+    expect(matches('task', group(40), group(60))).toBe(true);
+    // Its other fields still count, and a task's own progress does.
+    expect(matches('task', group(40), { ...group(60), name: 'Renamed' })).toBe(false);
+    expect(matches('task', task('t1', { progress: 40 }), task('t1', { progress: 60 }))).toBe(false);
+  });
+
   it('holds when both are gone, and not when only one is', () => {
     expect(matches('task', null, null)).toBe(true);
     expect(matches('task', task('t1'), null)).toBe(false);

@@ -1,6 +1,7 @@
 import { In, type EntityManager } from 'typeorm';
 import { Task } from './entities/task.entity.js';
 import { versionedRows } from '../database/versioned-rows.js';
+import { progressChanges, type ProgressRow } from './scheduling/group-progress.js';
 
 // The tasks' rows as the history needs them (revisions: snapshots, undo and redo, restoring and
 // copying a version). They come here, not to the table (#55). Plain SQL on purpose: a saved state
@@ -206,4 +207,26 @@ export async function putAtPlace(
 /** Tasks as the REST API returns them: the rows a write changed, sent with it (#75). */
 export function tasksWithIds(manager: EntityManager, ids: string[]): Promise<Task[]> {
   return ids.length === 0 ? Promise.resolve([]) : manager.findBy(Task, { id: In(ids) });
+}
+
+/**
+ * Every group of the project set to the average of its tasks (scheduling/group-progress.ts), in the
+ * caller's transaction. Only groups whose value changes are written, in one statement. Run at the
+ * end of every write (RevisionInterceptor), so whatever the write did (a task's progress, a task
+ * moved, deleted or made again, an undo, a restore), its groups follow it in the same transaction,
+ * and their change is in its history and its change message like any other.
+ */
+export async function fitGroupProgress(manager: EntityManager, projectId: string) {
+  const rows = await manager.query<ProgressRow[]>(
+    `SELECT "id", "parentId", "type", "progress" FROM "tasks" WHERE "projectId" = $1`,
+    [projectId],
+  );
+  const changes = progressChanges(rows);
+  if (changes.length === 0) return;
+  await manager.query(
+    `UPDATE "tasks" t SET "progress" = c."progress"
+       FROM unnest($1::uuid[], $2::int[]) AS c("id", "progress")
+      WHERE t."id" = c."id"`,
+    [changes.map((change) => change.id), changes.map((change) => change.progress)],
+  );
 }

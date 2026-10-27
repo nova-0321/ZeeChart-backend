@@ -18,6 +18,7 @@ import { loadSnapshot } from './revision-state.js';
 import { changedRows } from './row-changes.js';
 import { RevisionsService } from './history/revisions.service.js';
 import { VersionsService } from './versions/versions.service.js';
+import { fitGroupProgress } from '../tasks/task-rows.js';
 
 /** What a route may add to its revisions (the restore route says what it restored). */
 export interface RevisionRequest extends AuthedRequest {
@@ -89,6 +90,9 @@ export class RevisionInterceptor implements NestInterceptor {
         await assertNoConflict(manager, before, target, seen, request.userId);
       }
       const answer: unknown = await handle();
+      // A group's progress is the average of its tasks (#80): whatever the route changed, the groups
+      // follow it here, before the project is read again, so their change is recorded and sent too.
+      await fitGroupProgress(manager, projectId);
       after = await loadSnapshot(manager, projectId);
       const versions = await this.revisions.record(projectId, before, after, {
         userId: request.userId ?? null,
