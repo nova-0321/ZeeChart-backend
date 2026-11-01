@@ -52,8 +52,14 @@ export function groupProgress(rows: readonly ProgressRow[]): Map<string, number>
   return result;
 }
 
+/** A group whose stored progress is not its average yet, with the value it should have. */
+export interface ProgressChange {
+  id: string;
+  progress: number;
+}
+
 /** The groups whose stored progress is not their average yet, with the value they should have. */
-export function progressChanges(rows: readonly ProgressRow[]): { id: string; progress: number }[] {
+export function progressChanges(rows: readonly ProgressRow[]): ProgressChange[] {
   const stored = new Map(rows.map((row) => [row.id, row.progress]));
   return [...groupProgress(rows)]
     .filter(([id, progress]) => stored.get(id) !== progress)
