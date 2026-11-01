@@ -14,7 +14,7 @@ import { loadSnapshot } from '../revision-state.js';
 import { contentOf, sameContent, type VersionContent } from './version-content.js';
 // Each kind of row is written back by the domain that owns it (#55).
 import { deleteLinksOf, writeLink } from '../../dependencies/link-rows.js';
-import { deleteEventsExcept, writeEvent } from '../../events/event-rows.js';
+import { deleteEventsExcept, lineUpEvents, writeEvent } from '../../events/event-rows.js';
 import { ownedNamesLike, ownerIdsOf } from '../../members/membership.js';
 import { writeProjectFields } from '../../projects/project-rows.js';
 import {
@@ -273,6 +273,8 @@ export class VersionsService {
       for (const event of content.events) {
         await writeEvent(manager, project.id, { ...event, id: randomUUID() });
       }
+      // A version from before #84 may have events on the same days: lined up, as the migration did.
+      await lineUpEvents(manager, project.id);
       for (const link of content.links) {
         const [from, to] = [ids.get(link.fromTaskId), ids.get(link.toTaskId)];
         if (from && to) {
@@ -324,6 +326,8 @@ export class VersionsService {
     // Each level numbered 1, 2, 3... (a version saved before levels were kept so may have gaps).
     await numberAllLevels(manager, projectId);
     for (const event of content.events) await writeEvent(manager, projectId, event);
+    // A version from before #84 may have events on the same days: lined up, as the migration did.
+    await lineUpEvents(manager, projectId);
     for (const link of content.links) await writeLink(manager, projectId, link);
     if (withProjectFields) {
       // The name only when no owner of it owns another project of that name now (names are unique

@@ -22,6 +22,15 @@ describe('EventsService', () => {
   };
   /** ProjectsService: events ask it whether their project exists. */
   const projects = { exists: vi.fn() };
+  /** The project's events as stored (read to place one, #84), and the pushes written. */
+  let projectEvents: {
+    id: string;
+    name: string;
+    color: string;
+    startDate: string;
+    endDate: string;
+  }[];
+  const query = vi.fn();
   let service: EventsService;
 
   beforeEach(() => {
@@ -29,7 +38,14 @@ describe('EventsService', () => {
     repo.create.mockImplementation((values: object) => values);
     repo.save.mockImplementation((value: object) => Promise.resolve({ id: 'e1', ...value }));
     projects.exists.mockResolvedValue(true);
-    service = new EventsService({ repo: () => repo } as never, projects as never);
+    projectEvents = [];
+    query.mockImplementation((sql: string) =>
+      Promise.resolve(sql.trimStart().startsWith('SELECT') ? projectEvents : []),
+    );
+    service = new EventsService(
+      { repo: () => repo, manager: { query } } as never,
+      projects as never,
+    );
   });
 
   it('lists the earliest events first', async () => {
@@ -45,6 +61,18 @@ describe('EventsService', () => {
     expect(repo.save).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Freeze', startDate: '2026-10-05', endDate: '2026-10-12' }),
     );
+  });
+
+  it('places a new event on a taken day after the event there, keeping its length (#84)', async () => {
+    projectEvents = [
+      { id: 'a', name: 'Launch', color: '#000000', startDate: '2026-10-10', endDate: '2026-10-20' },
+    ];
+    await service.create(body({ startDate: '2026-10-15', endDate: '2026-10-18' }) as never);
+    expect(repo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ startDate: '2026-10-21', endDate: '2026-10-24' }),
+    );
+    // The others are not moved by a create.
+    expect(query).toHaveBeenCalledTimes(1);
   });
 
   it('accepts a one-day event', async () => {
@@ -67,6 +95,10 @@ describe('EventsService', () => {
     expect(projects.exists).toHaveBeenCalledWith(PROJECT);
     expect(repo.save).not.toHaveBeenCalled();
   });
+
+  const currentEvents = (rows: typeof projectEvents) => {
+    projectEvents = rows;
+  };
 
   describe('update', () => {
     const stored = () => ({
@@ -91,6 +123,35 @@ describe('EventsService', () => {
         BadRequestException,
       );
       expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('pushes the events a move now overlaps, keeping the moved one where it was put (#84)', async () => {
+      repo.findOneByOrFail.mockResolvedValue({ ...stored(), projectId: PROJECT });
+      const moved = {
+        id: 'e1',
+        name: 'Old',
+        color: '#e5484d',
+        startDate: '2026-10-20',
+        endDate: '2026-10-22',
+      };
+      const d = {
+        id: 'd',
+        name: 'D',
+        color: '#000000',
+        startDate: '2026-10-21',
+        endDate: '2026-10-23',
+      };
+      // As read after the save.
+      currentEvents([moved, d]);
+      await service.update('e1', { startDate: '2026-10-20', endDate: '2026-10-22' });
+      const update = query.mock.calls.find(([sql]) => String(sql).includes('UPDATE'));
+      expect(update?.[1]).toEqual([['d'], ['2026-10-23'], ['2026-10-25']]);
+    });
+
+    it('reads and moves nothing when no date changed', async () => {
+      repo.findOneByOrFail.mockResolvedValue({ ...stored(), projectId: PROJECT });
+      await service.update('e1', { name: 'New' });
+      expect(query).not.toHaveBeenCalled();
     });
 
     it('passes on the not-found error for an unknown event', async () => {

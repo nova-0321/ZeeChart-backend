@@ -11,7 +11,7 @@ import { UNDO_DEPTH } from '../history-limits.js';
 import { ROWS } from '../rows.js';
 // Each kind of row is written back by the domain that owns it (#55).
 import { writeLink } from '../../dependencies/link-rows.js';
-import { writeEvent } from '../../events/event-rows.js';
+import { lineUpEvents, writeEvent } from '../../events/event-rows.js';
 import { ownersOwnProjectNamed } from '../../members/membership.js';
 import { writeProjectRow } from '../../projects/project-rows.js';
 import {
@@ -184,6 +184,12 @@ export class UndoService {
           await writeLink(manager, projectId, wanted as LinkState);
         }
       }
+      // The events it put back keep their dates; one made on the same days since moves after them,
+      // so no two events share a day (#84).
+      const events = steps.flatMap(({ revision, wanted }) =>
+        revision.entityType === 'event' && wanted ? [revision.entityId] : [],
+      );
+      if (events.length > 0) await lineUpEvents(manager, projectId, new Set(events));
       // The links a task had when it was deleted (where the batch doesn't list them itself).
       for (const task of tasks) {
         for (const link of task.links ?? []) await writeLink(manager, projectId, link);

@@ -24,6 +24,7 @@ const rows = vi.hoisted(() => ({
   writeLink: vi.fn(),
   deleteEventsExcept: vi.fn(),
   writeEvent: vi.fn(),
+  lineUpEvents: vi.fn(),
   writeProjectFields: vi.fn(),
   deleteTasksExcept: vi.fn(),
   numberAllLevels: vi.fn(),
@@ -49,6 +50,7 @@ vi.mock('../../dependencies/link-rows.js', () => ({
 vi.mock('../../events/event-rows.js', () => ({
   deleteEventsExcept: rows.deleteEventsExcept,
   writeEvent: rows.writeEvent,
+  lineUpEvents: rows.lineUpEvents,
 }));
 vi.mock('../../projects/project-rows.js', () => ({
   writeProjectFields: rows.writeProjectFields,
@@ -573,6 +575,11 @@ describe('VersionsService', () => {
       expect(rows.setTaskParent.mock.calls).toEqual([[inner, 'a', 'g']]);
       expect(rows.numberAllLevels).toHaveBeenCalledWith(inner, PROJECT_ID);
       expect(rows.writeEvent).toHaveBeenCalledWith(inner, PROJECT_ID, event('e1'));
+      // A version from before #84 may have overlapping events: lined up once they are written.
+      expect(rows.lineUpEvents).toHaveBeenCalledWith(inner, PROJECT_ID);
+      expect(rows.lineUpEvents.mock.invocationCallOrder[0]).toBeGreaterThan(
+        Math.max(...rows.writeEvent.mock.invocationCallOrder),
+      );
       expect(rows.writeLink).toHaveBeenCalledWith(inner, PROJECT_ID, link('a', 'b'));
       // Links go before the tasks they point at; parents only once every task is written; levels
       // numbered once the parents are back.
@@ -771,6 +778,11 @@ describe('VersionsService', () => {
         expect(e.id).toMatch(UUID);
         expect(['e1', 'e2']).not.toContain(e.id);
       }
+      // Lined up in the new project once they are written (#84).
+      expect(rows.lineUpEvents).toHaveBeenCalledWith(inner, 'p2');
+      expect(rows.lineUpEvents.mock.invocationCallOrder[0]).toBeGreaterThan(
+        Math.max(...rows.writeEvent.mock.invocationCallOrder),
+      );
     });
 
     it('makes the new project’s v1 what it was filled with, not the empty project', async () => {

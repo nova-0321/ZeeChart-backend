@@ -44,6 +44,10 @@ export class EventsController {
     return this.eventsService.findByProject(projectId);
   }
 
+  /**
+   * No two events share a day: on a taken day the new event goes after the event there (and on,
+   * until it is free), keeping its length. The answer has the dates it got.
+   */
   @Post()
   @ProjectAccess('editor', projectInBody())
   @AnswerWithChanges('ProjectEvent', 201)
@@ -52,7 +56,10 @@ export class EventsController {
     return this.eventsService.create(dto);
   }
 
-  /** Change any of name, color and dates. */
+  /**
+   * Change any of name, color and dates. A moved or resized event keeps its new dates; the events
+   * it now shares a day with move after it (and the ones after those), listed in `changes`.
+   */
   @Patch(':id')
   @IfMatch()
   @ProjectAccess('editor', projectOfRow(ProjectEvent))

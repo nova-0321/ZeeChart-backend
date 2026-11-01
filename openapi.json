@@ -213,6 +213,7 @@
             "bearer": []
           }
         ],
+        "summary": "No two events share a day: on a taken day the new event goes after the event there (and on,\nuntil it is free), keeping its length. The answer has the dates it got.",
         "tags": [
           "events"
         ]
@@ -289,7 +290,7 @@
             "bearer": []
           }
         ],
-        "summary": "Change any of name, color and dates.",
+        "summary": "Change any of name, color and dates. A moved or resized event keeps its new dates; the events\nit now shares a day with move after it (and the ones after those), listed in `changes`.",
         "tags": [
           "events"
         ]

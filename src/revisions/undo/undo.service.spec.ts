@@ -19,6 +19,7 @@ const db = vi.hoisted(() => ({
   numberLevels: vi.fn(),
   writeLink: vi.fn(),
   writeEvent: vi.fn(),
+  lineUpEvents: vi.fn(),
   writeProjectRow: vi.fn(),
   remove: {
     task: vi.fn(),
@@ -41,7 +42,10 @@ vi.mock('../../tasks/task-rows.js', () => ({
   numberLevels: db.numberLevels,
 }));
 vi.mock('../../dependencies/link-rows.js', () => ({ writeLink: db.writeLink }));
-vi.mock('../../events/event-rows.js', () => ({ writeEvent: db.writeEvent }));
+vi.mock('../../events/event-rows.js', () => ({
+  writeEvent: db.writeEvent,
+  lineUpEvents: db.lineUpEvents,
+}));
 vi.mock('../../projects/project-rows.js', () => ({ writeProjectRow: db.writeProjectRow }));
 vi.mock('../rows.js', () => ({
   ROWS: {
@@ -336,6 +340,11 @@ describe('UndoService', () => {
       expect(db.writeTask).toHaveBeenCalledWith(txManager, PROJECT_ID, made);
       expect(db.setTaskParent).toHaveBeenCalledWith(txManager, 't1', 'g1');
       expect(db.writeEvent).toHaveBeenCalledWith(txManager, PROJECT_ID, event);
+      // The event put back keeps its dates; one on the same days since moves after it (#84).
+      expect(db.lineUpEvents).toHaveBeenCalledWith(txManager, PROJECT_ID, new Set(['e1']));
+      expect(db.lineUpEvents.mock.invocationCallOrder[0]).toBeGreaterThan(
+        db.writeEvent.mock.invocationCallOrder[0]!,
+      );
       expect(db.writeLink).toHaveBeenCalledWith(txManager, PROJECT_ID, link);
       expect(db.remove.task).not.toHaveBeenCalled();
       expect(db.numberLevels).toHaveBeenCalledWith(
