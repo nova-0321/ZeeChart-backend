@@ -38,8 +38,13 @@ describe('CreateTaskDto', () => {
     expect(plainToInstance(CreateTaskDto, { ...minimal, name: '  Plan  ' }).name).toBe('Plan');
   });
 
-  it('rejects a name longer than the 255 characters the column was meant for', async () => {
-    expect(await badFields({ ...minimal, name: 'x'.repeat(256) })).toEqual(['name']);
+  it('accepts a name of up to 40 characters and rejects 41 (#81)', async () => {
+    expect(await badFields({ ...minimal, name: 'x'.repeat(40) })).toEqual([]);
+    expect(await badFields({ ...minimal, name: 'x'.repeat(41) })).toEqual(['name']);
+  });
+
+  it('counts the name after trimming, so spaces around 40 characters are fine', async () => {
+    expect(await badFields({ ...minimal, name: `  ${'x'.repeat(40)}  ` })).toEqual([]);
   });
 
   it('only accepts known types and priorities', async () => {
