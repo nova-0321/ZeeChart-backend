@@ -57,6 +57,15 @@ entity `notFound` has no name for.
   revision or a version. No gaps, no two on one place. The rows renumbered are in the write's
   `changes` like any other changed row. Migration `NumberTaskLevels` numbered the data already
   stored.
+- **No two events of a project share a day** (start and end days count, `event-placing.ts`). A new
+  event on a taken day goes after the event there (and on, until it is free), keeping its length:
+  the `201` answer has the dates it got, which may not be the ones sent. A moved or resized event
+  (`PATCH /events/:id`, or restoring one of its revisions) keeps its new dates, and every event it
+  now shares a day with moves after it, then the ones after those, in start order. The moved events
+  are part of the same write: its `changes`, its history batch, its change message, one undo.
+  Undo keeps the events it puts back where they were; restoring or copying a version lines up its
+  events by start. All under the project's write lock, so two writes at once can't take the same
+  days. Migration `EventsNeverOverlap` lined up the events already stored.
 - **A read is named for what it returns.** `GET /projects/:id/undo-state` is what Undo and Redo
   would do; `POST /projects/:id/undo` and `/redo` do it.
 

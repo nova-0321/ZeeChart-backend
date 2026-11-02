@@ -1,6 +1,7 @@
 import { In, type EntityManager } from 'typeorm';
 import { ProjectEvent } from './entities/project-event.entity.js';
 import { versionedRows } from '../database/versioned-rows.js';
+import { placeEvents, type EventSpan } from './event-placing.js';
 
 // The events' rows as the history needs them (revisions: snapshots, undo and redo, restoring and
 // copying a version). They come here, not to the table (#55). Each takes the caller's manager, so
@@ -20,12 +21,17 @@ export const eventRows = versionedRows('events');
 
 const dayOf = (value: unknown) => String(value).slice(0, 10);
 
-/** The project's events as stored right now (dates cast to text: see taskRowsOf). */
+/**
+ * The project's events as stored right now (dates cast to text: see taskRowsOf), in the order the
+ * list shows them: by start, then the first made (lineUpEvents places them in this order).
+ */
 export async function eventRowsOf(manager: EntityManager, projectId: string): Promise<EventRow[]> {
   const rows = await manager.query<
     (Omit<EventRow, 'startDate' | 'endDate'> & { startDate: unknown; endDate: unknown })[]
   >(
-    `SELECT "id", "name", "color", "startDate"::text AS "startDate", "endDate"::text AS "endDate" FROM "events" WHERE "projectId" = $1`,
+    `SELECT "id", "name", "color", "startDate"::text AS "startDate", "endDate"::text AS "endDate"
+       FROM "events" WHERE "projectId" = $1
+      ORDER BY "startDate", "createdAt", "id"`,
     [projectId],
   );
   return rows.map((row) => ({
@@ -45,6 +51,39 @@ export async function writeEvent(manager: EntityManager, projectId: string, even
        "startDate" = EXCLUDED."startDate", "endDate" = EXCLUDED."endDate", "updatedAt" = now()`,
     [event.id, projectId, event.name, event.color, event.startDate, event.endDate],
   );
+}
+
+/**
+ * No two of the project's events share a day (#84, event-placing.ts): the events in `fixed` keep
+ * their dates, and every other event that shares a day with one moves later, keeping its length.
+ * In the caller's transaction; the moved events are written in one statement, so they are part of
+ * that write (its history batch, its change message, its undo). Returns the events it moved.
+ *
+ * With nothing fixed, the events are lined up by start (a restored version, or a project copied
+ * from one, may come from before the rule).
+ */
+export async function lineUpEvents(
+  manager: EntityManager,
+  projectId: string,
+  fixed: ReadonlySet<string> = new Set(),
+): Promise<EventSpan[]> {
+  const rows = await eventRowsOf(manager, projectId);
+  const moved = placeEvents(
+    rows.filter((row) => fixed.has(row.id)),
+    rows.filter((row) => !fixed.has(row.id)),
+  );
+  if (moved.length === 0) return moved;
+  await manager.query(
+    `UPDATE "events" e SET "startDate" = m."startDate", "endDate" = m."endDate", "updatedAt" = now()
+       FROM unnest($1::uuid[], $2::date[], $3::date[]) AS m("id", "startDate", "endDate")
+      WHERE e."id" = m."id"`,
+    [
+      moved.map((event) => event.id),
+      moved.map((event) => event.startDate),
+      moved.map((event) => event.endDate),
+    ],
+  );
+  return moved;
 }
 
 /** Removes the project's events other than `keep` (restoring a version). */
