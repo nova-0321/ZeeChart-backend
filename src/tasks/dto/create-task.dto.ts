@@ -11,7 +11,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { DESCRIPTION_MAX_LENGTH } from '../../common/text-limits.js';
+import { DESCRIPTION_MAX_LENGTH, TASK_NAME_MAX_LENGTH } from '../../common/text-limits.js';
 import { IsDay } from '../../common/is-day.js';
 import {
   TASK_PRIORITIES,
@@ -25,7 +25,7 @@ export class CreateTaskDto {
   @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @IsNotEmpty()
-  @MaxLength(255)
+  @MaxLength(TASK_NAME_MAX_LENGTH)
   name: string;
 
   @IsOptional()

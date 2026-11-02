@@ -3018,7 +3018,7 @@
         "properties": {
           "name": {
             "type": "string",
-            "maxLength": 255
+            "maxLength": 40
           },
           "description": {
             "type": "string",
@@ -3093,7 +3093,7 @@
         "properties": {
           "name": {
             "type": "string",
-            "maxLength": 255
+            "maxLength": 40
           },
           "description": {
             "type": "string",
