@@ -247,6 +247,17 @@ describe('RestoreService.restore', () => {
       expect(tasks.changeType).not.toHaveBeenCalled();
     });
 
+    it("restores a group's fields without its progress: that is its tasks' average again (#80)", async () => {
+      revisionRepo.findOneBy.mockResolvedValue(
+        revision('task', taskState({ type: 'group', progress: 90 })),
+      );
+      tasks.find.mockResolvedValue({ id: 't1', type: 'group', parentId: null });
+      await service.restore('r1', USER_ID);
+      const [, fields] = tasks.update.mock.calls[0] as [string, Record<string, unknown>];
+      expect(fields).not.toHaveProperty('progress');
+      expect(fields).toMatchObject({ name: 'Design review', color: '#2a78d6' });
+    });
+
     it('moves it back into its old group at the place it had there', async () => {
       revisionRepo.findOneBy.mockResolvedValue(
         revision('task', taskState({ parentId: 'g1', order: 3 })),

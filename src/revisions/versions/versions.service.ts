@@ -19,6 +19,7 @@ import { ownedNamesLike, ownerIdsOf } from '../../members/membership.js';
 import { writeProjectFields } from '../../projects/project-rows.js';
 import {
   deleteTasksExcept,
+  fitGroupProgress,
   numberAllLevels,
   setTaskParent,
   writeTask,
@@ -267,6 +268,8 @@ export class VersionsService {
         }
       }
       await numberAllLevels(manager, project.id);
+      // Its groups' progress as the average of its tasks (#80): a version from before has its own.
+      await fitGroupProgress(manager, project.id);
       for (const event of content.events) {
         await writeEvent(manager, project.id, { ...event, id: randomUUID() });
       }

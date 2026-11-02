@@ -9,6 +9,7 @@ import { Task } from './entities/task.entity.js';
 import { groupLoop } from './group-loop.js';
 import { TaskScheduler } from './scheduling/task-scheduler.service.js';
 import { notFound } from '../common/not-found.js';
+import { GROUP_PROGRESS_IS_COMPUTED } from './scheduling/group-progress.js';
 
 /** The day ("YYYY-MM-DD") of a date as the API takes it: what is stored is its first ten characters. */
 const dayOf = (date: Date | string) =>
@@ -123,6 +124,10 @@ export class TasksService {
     }
     if (dto.parentId) {
       await this.assertValidParent(null, dto.projectId, dto.parentId);
+    }
+    // A group's progress is the average of its tasks (#80): not something to send.
+    if (dto.type === 'group' && dto.progress !== undefined) {
+      throw new BadRequestException(GROUP_PROGRESS_IS_COMPUTED);
     }
     // progress has no database default, so it must be set here: without it the insert fails with
     // "null value in column ... violates not-null constraint". order is set by placeIn.
@@ -307,6 +312,9 @@ export class TasksService {
   async update(id: string, dto: UpdateTaskDto) {
     rejectNulls(dto, ['description']);
     const task = await this.taskRepo.findOneByOrFail({ id });
+    if (task.type === 'group' && dto.progress !== undefined) {
+      throw new BadRequestException(GROUP_PROGRESS_IS_COMPUTED);
+    }
     const before = {
       start: String(task.startDate).slice(0, 10),
       end: String(task.endDate).slice(0, 10),

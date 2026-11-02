@@ -91,11 +91,17 @@ const FIELDS: Record<Revision['entityType'], readonly string[]> = {
   link: LINK_FIELDS,
 };
 
-/** Whether a row is as expected: both gone, or the same in every field the history follows. */
+/**
+ * Whether a row is as expected: both gone, or the same in every field the history follows. A
+ * group's progress is left out: it is the average of its tasks (#80), so it moves whenever anyone
+ * changes one of them, and is set again after the undo anyway.
+ */
 export function matches(type: Revision['entityType'], expected: Row | null, current: Row | null) {
   if (!expected || !current) return !expected && !current;
+  const derived = type === 'task' && expected.type === 'group' && current.type === 'group';
   return FIELDS[type].every(
     (field) =>
+      (derived && field === 'progress') ||
       (expected as Record<string, unknown>)[field] === (current as Record<string, unknown>)[field],
   );
 }

@@ -46,7 +46,10 @@ export class CreateTaskDto {
   @IsDay()
   endDate: Date;
 
-  /** 0 to 100. Defaults to 0. */
+  /**
+   * 0 to 100. Defaults to 0. Not for a group: a group's progress is the average of its tasks, kept
+   * by the server (#80), and one sent for a group is refused (400).
+   */
   @IsOptional()
   @IsInt()
   @Min(0)
