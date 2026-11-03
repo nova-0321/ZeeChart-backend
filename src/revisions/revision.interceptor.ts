@@ -14,7 +14,7 @@ import { BROADCAST, type BroadcastOptions } from '../realtime/broadcast.decorato
 import type { ChangedRowsRequest, RowChanges } from '../realtime/realtime.types.js';
 import type { Snapshot } from './history/revision-diff.js';
 import { assertNoConflict, targetOf, versionIn } from './history/conflicts.js';
-import { loadSnapshot } from './revision-state.js';
+import { loadSnapshot, withProgress } from './revision-state.js';
 import { changedRows } from './row-changes.js';
 import { RevisionsService } from './history/revisions.service.js';
 import { VersionsService } from './versions/versions.service.js';
@@ -91,9 +91,10 @@ export class RevisionInterceptor implements NestInterceptor {
       }
       const answer: unknown = await handle();
       // A group's progress is the average of its tasks (#80): whatever the route changed, the groups
-      // follow it here, before the project is read again, so their change is recorded and sent too.
-      await fitGroupProgress(manager, projectId);
-      after = await loadSnapshot(manager, projectId);
+      // follow it here. Worked out from the project as read after the route, the one read of its
+      // tasks (#83), and put into that snapshot too, so their change is recorded and sent.
+      const read = await loadSnapshot(manager, projectId);
+      after = withProgress(read, await fitGroupProgress(manager, [...read.tasks.values()]));
       const versions = await this.revisions.record(projectId, before, after, {
         userId: request.userId ?? null,
         target: request.revisionWholeProject

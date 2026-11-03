@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { AppModule } from '../src/app.module.js';
 import { createValidationPipe } from '../src/common/validation.js';
 import { GroupProgressFromTasks1793100000000 } from '../src/database/migrations/1793100000000-GroupProgressFromTasks.js';
@@ -117,6 +117,22 @@ describe('Group progress: the average of its tasks (e2e)', () => {
       (answer.changes?.tasks?.upsert ?? []).map((task) => [task.name, task.progress]),
     );
     expect(changed).toMatchObject({ A: 100, G: 75, Top: 88 });
+  });
+
+  it("one write reads the project's tasks once after the route, not again for the groups (#83)", async () => {
+    const { a } = await groupOfTwo();
+    // Every read of all the project's tasks with their progress (the snapshot, or a group read).
+    const wholeProjectRead = /"progress"[\s\S]*FROM "tasks" WHERE "projectId" = \$1\s*$/;
+    const query = vi.spyOn(EntityManager.prototype, 'query');
+    try {
+      await setProgress(a.id, 100);
+      const reads = query.mock.calls.filter(([sql]) => wholeProjectRead.test(sql));
+      // One before the route (conflict check, history), one after it. Before #83 there was a third.
+      expect(reads).toHaveLength(2);
+    } finally {
+      query.mockRestore();
+    }
+    expect(await progressOf('G')).toEqual({ G: 90 });
   });
 
   it('a task made in a group, deleted from it, or moved between groups: both groups follow', async () => {
