@@ -29,6 +29,7 @@ const rows = vi.hoisted(() => ({
   deleteTasksExcept: vi.fn(),
   numberAllLevels: vi.fn(),
   fitGroupProgress: vi.fn(),
+  taskRowsOf: vi.fn(),
   setTaskParent: vi.fn(),
   writeTask: vi.fn(),
 }));
@@ -59,6 +60,7 @@ vi.mock('../../tasks/task-rows.js', () => ({
   deleteTasksExcept: rows.deleteTasksExcept,
   numberAllLevels: rows.numberAllLevels,
   fitGroupProgress: rows.fitGroupProgress,
+  taskRowsOf: rows.taskRowsOf,
   setTaskParent: rows.setTaskParent,
   writeTask: rows.writeTask,
 }));
@@ -747,8 +749,12 @@ describe('VersionsService', () => {
     });
 
     it("sets the new project's groups to the average of their tasks, once its tasks are in (#80)", async () => {
+      const copied = [{ id: 'x', parentId: null, type: 'group', progress: 0 }];
+      rows.taskRowsOf.mockResolvedValueOnce(copied);
       await service.copy('v3', 'u1');
-      expect(rows.fitGroupProgress).toHaveBeenCalledWith(inner, 'p2');
+      // Outside the interceptor: it reads the new project's tasks itself (#83).
+      expect(rows.taskRowsOf).toHaveBeenCalledWith(inner, 'p2');
+      expect(rows.fitGroupProgress).toHaveBeenCalledWith(inner, copied);
       expect(rows.writeTask.mock.invocationCallOrder.at(-1)).toBeLessThan(
         rows.fitGroupProgress.mock.invocationCallOrder[0]!,
       );

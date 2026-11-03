@@ -22,6 +22,7 @@ import {
   fitGroupProgress,
   numberAllLevels,
   setTaskParent,
+  taskRowsOf,
   writeTask,
 } from '../../tasks/task-rows.js';
 import { notFound } from '../../common/not-found.js';
@@ -269,7 +270,8 @@ export class VersionsService {
       }
       await numberAllLevels(manager, project.id);
       // Its groups' progress as the average of its tasks (#80): a version from before has its own.
-      await fitGroupProgress(manager, project.id);
+      // Read here: copying runs outside RevisionInterceptor, so there is no snapshot to reuse.
+      await fitGroupProgress(manager, await taskRowsOf(manager, project.id));
       for (const event of content.events) {
         await writeEvent(manager, project.id, { ...event, id: randomUUID() });
       }

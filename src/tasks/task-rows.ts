@@ -214,23 +214,22 @@ export function tasksWithIds(manager: EntityManager, ids: string[]): Promise<Tas
 }
 
 /**
- * Every group of the project set to the average of its tasks (scheduling/group-progress.ts), in the
+ * Every group of a project set to the average of its tasks (scheduling/group-progress.ts), in the
  * caller's transaction. Only groups whose value changes are written, in one statement. Run at the
  * end of every write (RevisionInterceptor), so whatever the write did (a task's progress, a task
  * moved, deleted or made again, an undo, a restore), its groups follow it in the same transaction,
  * and their change is in its history and its change message like any other.
+ *
+ * `rows` are all the project's tasks as stored now: the caller has them already (the interceptor's
+ * snapshot after the write), so they are not read a second time (#83).
  *
  * Returns the groups it changed (none when all were right). Errors are not caught here: they fail
  * the write, so its transaction rolls back and nothing is half saved.
  */
 export async function fitGroupProgress(
   manager: EntityManager,
-  projectId: string,
+  rows: readonly ProgressRow[],
 ): Promise<ProgressChange[]> {
-  const rows = await manager.query<ProgressRow[]>(
-    `SELECT "id", "parentId", "type", "progress" FROM "tasks" WHERE "projectId" = $1`,
-    [projectId],
-  );
   const changes = progressChanges(rows);
   if (changes.length === 0) return changes;
   await manager.query(

@@ -23,3 +23,20 @@ export async function loadSnapshot(db: EntityManager, projectId: string): Promis
     links,
   };
 }
+
+/**
+ * The snapshot with the groups' progress just saved (fitGroupProgress), instead of reading the
+ * project again (#83). A new snapshot: the one passed in is left as it was.
+ */
+export function withProgress(
+  snapshot: Snapshot,
+  changes: readonly { id: string; progress: number }[],
+): Snapshot {
+  if (changes.length === 0) return snapshot;
+  const tasks = new Map(snapshot.tasks);
+  for (const { id, progress } of changes) {
+    const task = tasks.get(id);
+    if (task) tasks.set(id, { ...task, progress });
+  }
+  return { ...snapshot, tasks };
+}
